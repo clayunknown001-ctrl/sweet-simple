@@ -100,7 +100,20 @@ Return ONLY valid JSON, no markdown.`,
       }
       const t = await response.text();
       console.error("AI error:", response.status, t);
-      throw new Error("AI gateway error");
+      let errorMsg = "AI tahlil qilishda xatolik yuz berdi.";
+      try {
+        const errData = JSON.parse(t);
+        if (errData?.error?.message) {
+          if (errData.error.message.includes("fetching image from URL")) {
+            errorMsg = "Rasm URL ochilmadi. Iltimos, to'g'ridan-to'g'ri rasm URL manzilini kiriting (.jpg, .png, .webp).";
+          } else {
+            errorMsg = errData.error.message;
+          }
+        }
+      } catch { /* ignore parse error */ }
+      return new Response(JSON.stringify({ error: errorMsg }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
