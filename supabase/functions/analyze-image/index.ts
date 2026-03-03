@@ -41,20 +41,17 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an image analysis AI. Analyze the given image and return a JSON response with:
-- description: Detailed description of the image (2-4 sentences) in ${responseLang}
-- objects: Array of objects/items detected in the image in ${responseLang}
-- colors: Array of dominant colors in ${responseLang}
-- scene_type: Type of scene (indoor, outdoor, portrait, landscape, abstract, etc.) in ${responseLang}
-- mood: The mood/atmosphere of the image in ${responseLang}
-- text_detected: Any text found in the image (empty string if none)
-- quality: Image quality assessment (low, medium, high)
-- tags: Array of 5-8 relevant tags in ${responseLang}
-- contains_people: Boolean
-- estimated_people_count: Number of people (0 if none)
+            content: `You are an image analysis AI with a CRITICAL focus on detecting harmful content (pornography, nudity, violence, hate symbols, drugs, offensive text/words, inappropriate gestures, etc.).
 
-ALL text fields (description, objects, colors, scene_type, mood, tags) MUST be in ${responseLang}.
-Return ONLY valid JSON, no markdown.`,
+Analyze the given image and return structured results. ALL text fields MUST be in ${responseLang}.
+
+Key analysis areas:
+- description: Detailed description (2-4 sentences)
+- objects, colors, scene_type, mood, tags, quality, text_detected
+- contains_people and estimated_people_count
+- harmful_content: ALWAYS check for ANY inappropriate, NSFW, violent, hateful, or offensive content including bad words in any detected text
+
+Be thorough in harmful content detection. Even mild inappropriate content should be flagged.`,
           },
           {
             role: "user",
@@ -83,8 +80,19 @@ Return ONLY valid JSON, no markdown.`,
                   tags: { type: "array", items: { type: "string" } },
                   contains_people: { type: "boolean" },
                   estimated_people_count: { type: "number" },
+                  harmful_content: {
+                    type: "object",
+                    properties: {
+                      is_harmful: { type: "boolean", description: "Whether any harmful/inappropriate content was detected" },
+                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"], description: "Severity level" },
+                      categories: { type: "array", items: { type: "string" }, description: "Categories of harmful content found (e.g. nudity, violence, hate, profanity, drugs)" },
+                      details: { type: "string", description: "Detailed explanation of what was found" },
+                    },
+                    required: ["is_harmful", "severity", "categories", "details"],
+                    additionalProperties: false,
+                  },
                 },
-                required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count"],
+                required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content"],
                 additionalProperties: false,
               },
             },

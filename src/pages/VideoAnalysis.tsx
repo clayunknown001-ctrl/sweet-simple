@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Video, Upload, Loader2, Eye, Tag, Users, Sparkles, Activity, MessageSquare } from "lucide-react";
+import { Video, Upload, Loader2, Eye, Tag, Users, Sparkles, Activity, MessageSquare, ShieldAlert, AlertTriangle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import AnalysisCard from "@/components/AnalysisCard";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,13 @@ import { supabase } from "@/integrations/supabase/client";
 interface VideoScene {
   timestamp: string;
   description: string;
+}
+
+interface HarmfulContent {
+  is_harmful: boolean;
+  severity: string;
+  categories: string[];
+  details: string;
 }
 
 interface VideoResult {
@@ -25,6 +32,7 @@ interface VideoResult {
   estimated_people_count: number;
   tags: string[];
   quality: string;
+  harmful_content: HarmfulContent;
 }
 
 const languages = [
@@ -40,8 +48,26 @@ export default function VideoAnalysis() {
   const [loading, setLoading] = useState(false);
   const [language, setLanguage] = useState("uz");
   const [videoName, setVideoName] = useState("");
+  const [lastBase64, setLastBase64] = useState<{ base64: string; mime: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const analyzeVideo = async (base64: string, mime: string, lang?: string) => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-video", {
+        body: { video_base64: base64, mime_type: mime, language: lang || language },
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      setResult(data);
+    } catch (err: any) {
+      toast({ title: "Xatolik", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,24 +81,12 @@ export default function VideoAnalysis() {
       return;
     }
     setVideoName(file.name);
-    setLoading(true);
-    setResult(null);
 
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(",")[1];
-      try {
-        const { data, error } = await supabase.functions.invoke("analyze-video", {
-          body: { video_base64: base64, mime_type: file.type, language },
-        });
-        if (error) throw error;
-        if (data.error) throw new Error(data.error);
-        setResult(data);
-      } catch (err: any) {
-        toast({ title: "Xatolik", description: err.message, variant: "destructive" });
-      } finally {
-        setLoading(false);
-      }
+      setLastBase64({ base64, mime: file.type });
+      analyzeVideo(base64, file.type);
     };
     reader.readAsDataURL(file);
   };
@@ -93,7 +107,10 @@ export default function VideoAnalysis() {
                 key={l.code}
                 size="sm"
                 variant={language === l.code ? "default" : "outline"}
-                onClick={() => setLanguage(l.code)}
+                onClick={() => {
+                  setLanguage(l.code);
+                  if (lastBase64) analyzeVideo(lastBase64.base64, lastBase64.mime, l.code);
+                }}
                 className={language === l.code ? "" : "text-muted-foreground"}
               >
                 {l.label}
@@ -205,6 +222,44 @@ export default function VideoAnalysis() {
                     ))}
                   </div>
                 </AnalysisCard>
+
+                {result.harmful_content && (
+                  <AnalysisCard title="Zararli kontent tahlili" icon={<ShieldAlert className="w-5 h-5" />}>
+                    <div className={`p-4 rounded-lg border ${
+                      result.harmful_content.is_harmful
+                        ? "bg-destructive/10 border-destructive/30"
+                        : "bg-green-500/10 border-green-500/30"
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        {result.harmful_content.is_harmful ? (
+                          <AlertTriangle className="w-5 h-5 text-destructive" />
+                        ) : (
+                          <ShieldAlert className="w-5 h-5 text-green-500" />
+                        )}
+                        <span className={`font-bold ${
+                          result.harmful_content.is_harmful ? "text-destructive" : "text-green-500"
+                        }`}>
+                          {result.harmful_content.is_harmful ? "⚠️ Zararli kontent aniqlandi!" : "✅ Xavfsiz kontent"}
+                        </span>
+                        {result.harmful_content.is_harmful && (
+                          <Badge variant="destructive" className="ml-auto uppercase text-xs">
+                            {result.harmful_content.severity}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-foreground mb-2">{result.harmful_content.details}</p>
+                      {result.harmful_content.categories.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {result.harmful_content.categories.map((c) => (
+                            <Badge key={c} variant="destructive" className="font-mono text-xs">
+                              {c}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </AnalysisCard>
+                )}
               </>
             )}
 

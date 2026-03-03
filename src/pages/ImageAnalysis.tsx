@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Image as ImageIcon, Upload, Loader2, Palette, Eye, Tag, Users, Sparkles, Link as LinkIcon } from "lucide-react";
+import { Image as ImageIcon, Upload, Loader2, Palette, Eye, Tag, Users, Sparkles, Link as LinkIcon, ShieldAlert, AlertTriangle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import AnalysisCard from "@/components/AnalysisCard";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface HarmfulContent {
+  is_harmful: boolean;
+  severity: string;
+  categories: string[];
+  details: string;
+}
 
 interface ImageResult {
   description: string;
@@ -20,6 +27,7 @@ interface ImageResult {
   tags: string[];
   contains_people: boolean;
   estimated_people_count: number;
+  harmful_content: HarmfulContent;
 }
 
 const languages = [
@@ -34,15 +42,17 @@ export default function ImageAnalysis() {
   const [imageUrl, setImageUrl] = useState("");
   const [previewSrc, setPreviewSrc] = useState("");
   const [language, setLanguage] = useState("uz");
+  const [lastPayload, setLastPayload] = useState<{ image_url?: string; image_base64?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const analyzeImage = async (payload: { image_url?: string; image_base64?: string }) => {
+  const analyzeImage = async (payload: { image_url?: string; image_base64?: string }, lang?: string) => {
+    setLastPayload(payload);
     setLoading(true);
     setResult(null);
     try {
       const { data, error } = await supabase.functions.invoke("analyze-image", {
-        body: { ...payload, language },
+        body: { ...payload, language: lang || language },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -95,7 +105,10 @@ export default function ImageAnalysis() {
                 key={l.code}
                 size="sm"
                 variant={language === l.code ? "default" : "outline"}
-                onClick={() => setLanguage(l.code)}
+                onClick={() => {
+                  setLanguage(l.code);
+                  if (lastPayload) analyzeImage(lastPayload, l.code);
+                }}
                 className={language === l.code ? "" : "text-muted-foreground"}
               >
                 {l.label}
@@ -219,6 +232,47 @@ export default function ImageAnalysis() {
                 {result.text_detected && (
                   <AnalysisCard title="Aniqlangan matn" icon={<Eye className="w-5 h-5" />}>
                     <p className="text-foreground font-mono text-sm bg-muted p-3 rounded-lg">{result.text_detected}</p>
+                  </AnalysisCard>
+                )}
+
+                {result.harmful_content && (
+                  <AnalysisCard
+                    title="Zararli kontent tahlili"
+                    icon={<ShieldAlert className="w-5 h-5" />}
+                  >
+                    <div className={`p-4 rounded-lg border ${
+                      result.harmful_content.is_harmful
+                        ? "bg-destructive/10 border-destructive/30"
+                        : "bg-green-500/10 border-green-500/30"
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        {result.harmful_content.is_harmful ? (
+                          <AlertTriangle className="w-5 h-5 text-destructive" />
+                        ) : (
+                          <ShieldAlert className="w-5 h-5 text-green-500" />
+                        )}
+                        <span className={`font-bold ${
+                          result.harmful_content.is_harmful ? "text-destructive" : "text-green-500"
+                        }`}>
+                          {result.harmful_content.is_harmful ? "⚠️ Zararli kontent aniqlandi!" : "✅ Xavfsiz kontent"}
+                        </span>
+                        {result.harmful_content.is_harmful && (
+                          <Badge variant="destructive" className="ml-auto uppercase text-xs">
+                            {result.harmful_content.severity}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-foreground mb-2">{result.harmful_content.details}</p>
+                      {result.harmful_content.categories.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {result.harmful_content.categories.map((c) => (
+                            <Badge key={c} variant="destructive" className="font-mono text-xs">
+                              {c}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </AnalysisCard>
                 )}
               </>
