@@ -38,8 +38,10 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a video analysis AI. Analyze the given video and return structured results.
-ALL text fields MUST be in ${responseLang}.`,
+            content: `You are a video analysis AI with a CRITICAL focus on detecting harmful content (pornography, nudity, violence, hate, drugs, offensive language/text, inappropriate gestures, etc.).
+
+Analyze the given video and return structured results. ALL text fields MUST be in ${responseLang}.
+Be thorough in harmful content detection - check every scene for inappropriate content and any bad words in speech or visible text.`,
           },
           {
             role: "user",
@@ -85,8 +87,19 @@ ALL text fields MUST be in ${responseLang}.`,
                   estimated_people_count: { type: "number" },
                   tags: { type: "array", items: { type: "string" }, description: "5-8 relevant tags" },
                   quality: { type: "string", enum: ["low", "medium", "high"] },
+                  harmful_content: {
+                    type: "object",
+                    properties: {
+                      is_harmful: { type: "boolean", description: "Whether any harmful/inappropriate content was detected" },
+                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
+                      categories: { type: "array", items: { type: "string" }, description: "Categories: nudity, violence, hate, profanity, drugs, etc." },
+                      details: { type: "string", description: "Detailed explanation" },
+                    },
+                    required: ["is_harmful", "severity", "categories", "details"],
+                    additionalProperties: false,
+                  },
                 },
-                required: ["description", "scenes", "objects", "actions", "mood", "category", "contains_speech", "speech_summary", "contains_people", "estimated_people_count", "tags", "quality"],
+                required: ["description", "scenes", "objects", "actions", "mood", "category", "contains_speech", "speech_summary", "contains_people", "estimated_people_count", "tags", "quality", "harmful_content"],
                 additionalProperties: false,
               },
             },
