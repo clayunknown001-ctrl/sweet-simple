@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import TextAnalysis from "./pages/TextAnalysis";
 import ImageAnalysis from "./pages/ImageAnalysis";
+import VideoAnalysis from "./pages/VideoAnalysis";
 import ApiDocs from "./pages/ApiDocs";
 import NotFound from "./pages/NotFound";
 
@@ -21,6 +22,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/text-analysis" element={<TextAnalysis />} />
           <Route path="/image-analysis" element={<ImageAnalysis />} />
+          <Route path="/video-analysis" element={<VideoAnalysis />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -22,11 +22,18 @@ interface ImageResult {
   estimated_people_count: number;
 }
 
+const languages = [
+  { code: "uz", label: "O'zbek" },
+  { code: "en", label: "English" },
+  { code: "ru", label: "Русский" },
+];
+
 export default function ImageAnalysis() {
   const [result, setResult] = useState<ImageResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [previewSrc, setPreviewSrc] = useState("");
+  const [language, setLanguage] = useState("uz");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -35,7 +42,7 @@ export default function ImageAnalysis() {
     setResult(null);
     try {
       const { data, error } = await supabase.functions.invoke("analyze-image", {
-        body: payload,
+        body: { ...payload, language },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -82,6 +89,19 @@ export default function ImageAnalysis() {
             Rasm tahlili
           </h1>
           <p className="text-muted-foreground">Rasmni yuklang yoki URL kiriting</p>
+          <div className="flex gap-2 mt-3">
+            {languages.map((l) => (
+              <Button
+                key={l.code}
+                size="sm"
+                variant={language === l.code ? "default" : "outline"}
+                onClick={() => setLanguage(l.code)}
+                className={language === l.code ? "" : "text-muted-foreground"}
+              >
+                {l.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">

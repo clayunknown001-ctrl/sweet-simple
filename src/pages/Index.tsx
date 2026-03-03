@@ -1,4 +1,4 @@
-import { Sparkles, FileText, Image as ImageIcon, Code2, ArrowRight } from "lucide-react";
+import { Sparkles, FileText, Image as ImageIcon, Video, Code2, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,14 @@ const features = [
     link: "/image-analysis",
     color: "text-cyan",
     glow: "glow-cyan",
+  },
+  {
+    icon: <Video className="w-8 h-8" />,
+    title: "Video tahlili",
+    desc: "Videodagi sahnalar, harakatlar, ob'ektlar va nutqni AI bilan tahlil qiling.",
+    link: "/video-analysis",
+    color: "text-primary",
+    glow: "glow-primary",
   },
   {
     icon: <Code2 className="w-8 h-8" />,

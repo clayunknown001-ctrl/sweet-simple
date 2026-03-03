@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FileText, Image, BookOpen, Zap } from "lucide-react";
+import { Brain, FileText, Image, Video, BookOpen, Zap } from "lucide-react";
 
 const navItems = [
   { path: "/", label: "Bosh sahifa", icon: Zap },
   { path: "/text-analysis", label: "Matn tahlili", icon: FileText },
   { path: "/image-analysis", label: "Rasm tahlili", icon: Image },
+  { path: "/video-analysis", label: "Video tahlili", icon: Video },
   { path: "/api-docs", label: "API", icon: BookOpen },
 ];
 
