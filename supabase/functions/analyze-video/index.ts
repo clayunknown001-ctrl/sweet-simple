@@ -38,15 +38,24 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a video analysis AI with a CRITICAL focus on detecting harmful content (pornography, nudity, violence, hate, drugs, offensive language/text, inappropriate gestures, etc.).
+            content: `You are a content moderation and video analysis AI. Your PRIMARY job is detecting harmful content: pornography, nudity, semi-nudity, sexually suggestive scenes, violence, gore, hate symbols, drugs, offensive language/text in ANY language, inappropriate gestures, disturbing content, inappropriate memes/jokes.
 
 Analyze the given video and return structured results. ALL text fields MUST be in ${responseLang}.
-Be thorough in harmful content detection - check every scene for inappropriate content and any bad words in speech or visible text.`,
+
+CRITICAL RULES:
+- Check EVERY scene for inappropriate content
+- Listen for profanity, slurs, hate speech in speech (any language)
+- Check any visible text for offensive words
+- Flag suggestive or sexual scenes even if not explicit
+- Flag violent or gory content
+- Flag drug use or references
+- The "should_block" field must be true if ANY harmful content is found with severity medium or higher
+- Be STRICT — when in doubt, flag it`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Analyze this video in detail." },
+              { type: "text", text: "Analyze this video for content moderation." },
               {
                 type: "image_url",
                 image_url: { url: `data:${mime_type};base64,${video_base64}` },
@@ -59,47 +68,48 @@ Be thorough in harmful content detection - check every scene for inappropriate c
             type: "function",
             function: {
               name: "return_video_analysis",
-              description: "Return the video analysis results",
+              description: "Return video analysis with content moderation",
               parameters: {
                 type: "object",
                 properties: {
-                  description: { type: "string", description: "Detailed description of the video content (3-5 sentences)" },
+                  description: { type: "string", description: "Detailed description (3-5 sentences)" },
                   scenes: {
                     type: "array",
                     items: {
                       type: "object",
                       properties: {
-                        timestamp: { type: "string", description: "Approximate timestamp or range" },
-                        description: { type: "string", description: "What happens in this scene" },
+                        timestamp: { type: "string" },
+                        description: { type: "string" },
                       },
                       required: ["timestamp", "description"],
                       additionalProperties: false,
                     },
-                    description: "Key scenes/moments in the video",
                   },
-                  objects: { type: "array", items: { type: "string" }, description: "Objects detected" },
-                  actions: { type: "array", items: { type: "string" }, description: "Actions/activities happening" },
-                  mood: { type: "string", description: "Overall mood/atmosphere" },
-                  category: { type: "string", description: "Video category (e.g. tutorial, vlog, nature, sports)" },
+                  objects: { type: "array", items: { type: "string" } },
+                  actions: { type: "array", items: { type: "string" } },
+                  mood: { type: "string" },
+                  category: { type: "string" },
                   contains_speech: { type: "boolean" },
-                  speech_summary: { type: "string", description: "Summary of speech if any, empty if none" },
+                  speech_summary: { type: "string" },
                   contains_people: { type: "boolean" },
                   estimated_people_count: { type: "number" },
-                  tags: { type: "array", items: { type: "string" }, description: "5-8 relevant tags" },
+                  tags: { type: "array", items: { type: "string" } },
                   quality: { type: "string", enum: ["low", "medium", "high"] },
                   harmful_content: {
                     type: "object",
                     properties: {
-                      is_harmful: { type: "boolean", description: "Whether any harmful/inappropriate content was detected" },
+                      is_harmful: { type: "boolean" },
                       severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" }, description: "Categories: nudity, violence, hate, profanity, drugs, etc." },
-                      details: { type: "string", description: "Detailed explanation" },
+                      categories: { type: "array", items: { type: "string" }, description: "nudity, violence, hate, profanity, drugs, sexual, gore, extremism" },
+                      details: { type: "string" },
                     },
                     required: ["is_harmful", "severity", "categories", "details"],
                     additionalProperties: false,
                   },
+                  should_block: { type: "boolean", description: "true if content should be blocked" },
+                  block_reason: { type: "string", description: "Reason for blocking, empty if safe" },
                 },
-                required: ["description", "scenes", "objects", "actions", "mood", "category", "contains_speech", "speech_summary", "contains_people", "estimated_people_count", "tags", "quality", "harmful_content"],
+                required: ["description", "scenes", "objects", "actions", "mood", "category", "contains_speech", "speech_summary", "contains_people", "estimated_people_count", "tags", "quality", "harmful_content", "should_block", "block_reason"],
                 additionalProperties: false,
               },
             },

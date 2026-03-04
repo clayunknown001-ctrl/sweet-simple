@@ -41,22 +41,24 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an image analysis AI with a CRITICAL focus on detecting harmful content (pornography, nudity, violence, hate symbols, drugs, offensive text/words, inappropriate gestures, etc.).
+            content: `You are a content moderation and image analysis AI. Your PRIMARY job is detecting harmful content: pornography, nudity, semi-nudity, sexually suggestive poses, violence, gore, hate symbols, drugs, offensive text/words in ANY language, inappropriate memes, disturbing content.
 
 Analyze the given image and return structured results. ALL text fields MUST be in ${responseLang}.
 
-Key analysis areas:
-- description: Detailed description (2-4 sentences)
-- objects, colors, scene_type, mood, tags, quality, text_detected
-- contains_people and estimated_people_count
-- harmful_content: ALWAYS check for ANY inappropriate, NSFW, violent, hateful, or offensive content including bad words in any detected text
-
-Be thorough in harmful content detection. Even mild inappropriate content should be flagged.`,
+CRITICAL RULES:
+- Check for ANY text in the image and scan it for profanity, slurs, hate speech in ALL languages
+- Flag any nudity or semi-nudity (revealing clothing, suggestive poses)
+- Flag violent, gory, or disturbing imagery
+- Flag drug-related imagery
+- Flag hate symbols, extremist content
+- Flag inappropriate memes or jokes
+- The "should_block" field must be true if ANY harmful content is found with severity medium or higher
+- Be STRICT — when in doubt, flag it`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Analyze this image in detail." },
+              { type: "text", text: "Analyze this image for content moderation." },
               imageContent,
             ],
           },
@@ -66,7 +68,7 @@ Be thorough in harmful content detection. Even mild inappropriate content should
             type: "function",
             function: {
               name: "return_analysis",
-              description: "Return the image analysis results",
+              description: "Return image analysis with content moderation results",
               parameters: {
                 type: "object",
                 properties: {
@@ -83,16 +85,18 @@ Be thorough in harmful content detection. Even mild inappropriate content should
                   harmful_content: {
                     type: "object",
                     properties: {
-                      is_harmful: { type: "boolean", description: "Whether any harmful/inappropriate content was detected" },
-                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"], description: "Severity level" },
-                      categories: { type: "array", items: { type: "string" }, description: "Categories of harmful content found (e.g. nudity, violence, hate, profanity, drugs)" },
-                      details: { type: "string", description: "Detailed explanation of what was found" },
+                      is_harmful: { type: "boolean" },
+                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
+                      categories: { type: "array", items: { type: "string" }, description: "nudity, violence, hate, profanity, drugs, sexual, gore, extremism, inappropriate_meme" },
+                      details: { type: "string" },
                     },
                     required: ["is_harmful", "severity", "categories", "details"],
                     additionalProperties: false,
                   },
+                  should_block: { type: "boolean", description: "true if content should be blocked" },
+                  block_reason: { type: "string", description: "Reason for blocking, empty if safe" },
                 },
-                required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content"],
+                required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason"],
                 additionalProperties: false,
               },
             },
@@ -120,12 +124,12 @@ Be thorough in harmful content detection. Even mild inappropriate content should
         const errData = JSON.parse(t);
         if (errData?.error?.message) {
           if (errData.error.message.includes("fetching image from URL")) {
-            errorMsg = "Rasm URL ochilmadi. Iltimos, to'g'ridan-to'g'ri rasm URL manzilini kiriting (.jpg, .png, .webp).";
+            errorMsg = "Rasm URL ochilmadi. To'g'ridan-to'g'ri rasm URL kiriting (.jpg, .png, .webp).";
           } else {
             errorMsg = errData.error.message;
           }
         }
-      } catch { /* ignore parse error */ }
+      } catch { /* ignore */ }
       return new Response(JSON.stringify({ error: errorMsg }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

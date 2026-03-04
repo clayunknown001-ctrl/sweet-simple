@@ -9,13 +9,20 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text } = await req.json();
+    const { text, language = "en" } = await req.json();
     if (!text || typeof text !== "string") {
       return new Response(JSON.stringify({ error: "Text is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const langMap: Record<string, string> = {
+      en: "English",
+      uz: "O'zbek tilida (Uzbek)",
+      ru: "Русский (Russian)",
+    };
+    const responseLang = langMap[language] || "English";
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
@@ -31,19 +38,13 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a content analysis AI. Analyze the given text and return a JSON response with these fields:
-- summary: A brief 2-3 sentence summary
-- language: The detected language name
-- sentiment: One of "positive", "negative", "neutral", "mixed"
-- sentiment_score: A number from -1 (very negative) to 1 (very positive)
-- topics: Array of 3-5 main topics/keywords
-- word_count: Number of words
-- reading_time_minutes: Estimated reading time
-- content_type: Type of content (article, review, social_post, technical, creative, etc.)
-- tone: The writing tone (formal, informal, academic, conversational, etc.)
-- key_entities: Array of named entities found (people, places, organizations)
+            content: `You are a content moderation and analysis AI. Your PRIMARY job is detecting harmful content: profanity, slurs, hate speech, threats, sexual content, drug references, scams, harassment, inappropriate jokes/memes text, and any offensive language in ANY language.
 
-Return ONLY valid JSON, no markdown.`,
+Analyze the given text and return structured results. ALL text fields MUST be in ${responseLang}.
+
+CRITICAL: Be extremely thorough in detecting bad words, slang, coded language, and inappropriate content in ALL languages (English, Russian, Uzbek, Turkish, etc.). Even mild profanity or suggestive content must be flagged.
+
+The "should_block" field must be true if ANY harmful content is found with severity medium or higher.`,
           },
           { role: "user", content: text },
         ],
@@ -52,22 +53,36 @@ Return ONLY valid JSON, no markdown.`,
             type: "function",
             function: {
               name: "return_analysis",
-              description: "Return the text analysis results",
+              description: "Return the text analysis results with content moderation",
               parameters: {
                 type: "object",
                 properties: {
-                  summary: { type: "string" },
-                  language: { type: "string" },
+                  summary: { type: "string", description: "Brief 2-3 sentence summary" },
+                  language: { type: "string", description: "Detected language" },
                   sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
-                  sentiment_score: { type: "number" },
-                  topics: { type: "array", items: { type: "string" } },
+                  sentiment_score: { type: "number", description: "-1 to 1" },
+                  topics: { type: "array", items: { type: "string" }, description: "3-5 main topics" },
                   word_count: { type: "number" },
                   reading_time_minutes: { type: "number" },
                   content_type: { type: "string" },
                   tone: { type: "string" },
                   key_entities: { type: "array", items: { type: "string" } },
+                  harmful_content: {
+                    type: "object",
+                    properties: {
+                      is_harmful: { type: "boolean", description: "Whether any harmful content was detected" },
+                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
+                      categories: { type: "array", items: { type: "string" }, description: "Categories: profanity, hate_speech, sexual, violence, threats, drugs, harassment, scam" },
+                      details: { type: "string", description: "Detailed explanation of what was found" },
+                      flagged_phrases: { type: "array", items: { type: "string" }, description: "Specific words/phrases that are harmful" },
+                    },
+                    required: ["is_harmful", "severity", "categories", "details", "flagged_phrases"],
+                    additionalProperties: false,
+                  },
+                  should_block: { type: "boolean", description: "true if content should be blocked (harmful severity medium+)" },
+                  block_reason: { type: "string", description: "Human-readable reason for blocking, empty if not blocked" },
                 },
-                required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities"],
+                required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities", "harmful_content", "should_block", "block_reason"],
                 additionalProperties: false,
               },
             },
@@ -102,7 +117,6 @@ Return ONLY valid JSON, no markdown.`,
       });
     }
 
-    // Fallback: try parsing content directly
     const content = data.choices?.[0]?.message?.content;
     return new Response(JSON.stringify(JSON.parse(content)), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
