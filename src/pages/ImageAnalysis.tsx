@@ -178,102 +178,73 @@ export default function ImageAnalysis() {
 
             {result && (
               <>
-                <AnalysisCard title="Tavsif" icon={<Sparkles className="w-5 h-5" />}>
-                  <p className="text-foreground leading-relaxed">{result.description}</p>
-                </AnalysisCard>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <AnalysisCard title="Sahna turi" icon={<Eye className="w-5 h-5" />}>
-                    <p className="text-xl font-bold text-cyan">{result.scene_type}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{result.mood}</p>
-                  </AnalysisCard>
-
-                  <AnalysisCard title="Sifat" icon={<Sparkles className="w-5 h-5" />}>
-                    <p className="text-xl font-bold text-primary capitalize">{result.quality}</p>
-                    {result.contains_people && (
-                      <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-                        <Users className="w-3 h-3" />
-                        {result.estimated_people_count} kishi
-                      </p>
-                    )}
-                  </AnalysisCard>
-                </div>
-
-                <AnalysisCard title="Ob'ektlar" icon={<Eye className="w-5 h-5" />}>
-                  <div className="flex flex-wrap gap-2">
-                    {result.objects.map((o) => (
-                      <Badge key={o} variant="secondary" className="font-mono text-xs bg-cyan/10 text-cyan border-cyan/20">
-                        {o}
-                      </Badge>
-                    ))}
+                {result.harmful_content?.is_harmful ? (
+                  <div className="flex flex-col items-center justify-center py-16 border border-destructive/30 bg-destructive/5 rounded-xl">
+                    <ShieldAlert className="w-16 h-16 text-destructive mb-4" />
+                    <h2 className="text-2xl font-bold text-destructive mb-2">🚫 Bloklangan</h2>
+                    <p className="text-muted-foreground text-center max-w-md">
+                      Bu kontent xavfsizlik siyosatiga mos kelmaydi va bloklandi.
+                    </p>
                   </div>
-                </AnalysisCard>
+                ) : (
+                  <>
+                    <AnalysisCard title="Tavsif" icon={<Sparkles className="w-5 h-5" />}>
+                      <p className="text-foreground leading-relaxed">{result.description}</p>
+                    </AnalysisCard>
 
-                <AnalysisCard title="Ranglar" icon={<Palette className="w-5 h-5" />}>
-                  <div className="flex flex-wrap gap-2">
-                    {result.colors.map((c) => (
-                      <Badge key={c} variant="outline" className="font-mono text-xs">
-                        {c}
-                      </Badge>
-                    ))}
-                  </div>
-                </AnalysisCard>
-
-                <AnalysisCard title="Teglar" icon={<Tag className="w-5 h-5" />}>
-                  <div className="flex flex-wrap gap-2">
-                    {result.tags.map((t) => (
-                      <Badge key={t} variant="secondary" className="font-mono text-xs bg-primary/10 text-primary border-primary/20">
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                </AnalysisCard>
-
-                {result.text_detected && (
-                  <AnalysisCard title="Aniqlangan matn" icon={<Eye className="w-5 h-5" />}>
-                    <p className="text-foreground font-mono text-sm bg-muted p-3 rounded-lg">{result.text_detected}</p>
-                  </AnalysisCard>
-                )}
-
-                {result.harmful_content && (
-                  <AnalysisCard
-                    title="Zararli kontent tahlili"
-                    icon={<ShieldAlert className="w-5 h-5" />}
-                  >
-                    <div className={`p-4 rounded-lg border ${
-                      result.harmful_content.is_harmful
-                        ? "bg-destructive/10 border-destructive/30"
-                        : "bg-green-500/10 border-green-500/30"
-                    }`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        {result.harmful_content.is_harmful ? (
-                          <AlertTriangle className="w-5 h-5 text-destructive" />
-                        ) : (
-                          <ShieldAlert className="w-5 h-5 text-green-500" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <AnalysisCard title="Sahna turi" icon={<Eye className="w-5 h-5" />}>
+                        <p className="text-xl font-bold text-cyan">{result.scene_type}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{result.mood}</p>
+                      </AnalysisCard>
+                      <AnalysisCard title="Sifat" icon={<Sparkles className="w-5 h-5" />}>
+                        <p className="text-xl font-bold text-primary capitalize">{result.quality}</p>
+                        {result.contains_people && (
+                          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            {result.estimated_people_count} kishi
+                          </p>
                         )}
-                        <span className={`font-bold ${
-                          result.harmful_content.is_harmful ? "text-destructive" : "text-green-500"
-                        }`}>
-                          {result.harmful_content.is_harmful ? "⚠️ Zararli kontent aniqlandi!" : "✅ Xavfsiz kontent"}
-                        </span>
-                        {result.harmful_content.is_harmful && (
-                          <Badge variant="destructive" className="ml-auto uppercase text-xs">
-                            {result.harmful_content.severity}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-foreground mb-2">{result.harmful_content.details}</p>
-                      {result.harmful_content.categories.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {result.harmful_content.categories.map((c) => (
-                            <Badge key={c} variant="destructive" className="font-mono text-xs">
-                              {c}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
+                      </AnalysisCard>
                     </div>
-                  </AnalysisCard>
+
+                    <AnalysisCard title="Ob'ektlar" icon={<Eye className="w-5 h-5" />}>
+                      <div className="flex flex-wrap gap-2">
+                        {result.objects.map((o) => (
+                          <Badge key={o} variant="secondary" className="font-mono text-xs bg-cyan/10 text-cyan border-cyan/20">{o}</Badge>
+                        ))}
+                      </div>
+                    </AnalysisCard>
+
+                    <AnalysisCard title="Ranglar" icon={<Palette className="w-5 h-5" />}>
+                      <div className="flex flex-wrap gap-2">
+                        {result.colors.map((c) => (
+                          <Badge key={c} variant="outline" className="font-mono text-xs">{c}</Badge>
+                        ))}
+                      </div>
+                    </AnalysisCard>
+
+                    <AnalysisCard title="Teglar" icon={<Tag className="w-5 h-5" />}>
+                      <div className="flex flex-wrap gap-2">
+                        {result.tags.map((t) => (
+                          <Badge key={t} variant="secondary" className="font-mono text-xs bg-primary/10 text-primary border-primary/20">{t}</Badge>
+                        ))}
+                      </div>
+                    </AnalysisCard>
+
+                    {result.text_detected && (
+                      <AnalysisCard title="Aniqlangan matn" icon={<Eye className="w-5 h-5" />}>
+                        <p className="text-foreground font-mono text-sm bg-muted p-3 rounded-lg">{result.text_detected}</p>
+                      </AnalysisCard>
+                    )}
+
+                    <div className="p-4 rounded-lg border bg-green-500/10 border-green-500/30">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="w-5 h-5 text-green-500" />
+                        <span className="font-bold text-green-500">✅ Xavfsiz kontent</span>
+                      </div>
+                    </div>
+                  </>
                 )}
               </>
             )}
