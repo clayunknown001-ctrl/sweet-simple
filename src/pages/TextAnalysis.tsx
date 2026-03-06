@@ -156,102 +156,71 @@ export default function TextAnalysis() {
 
             {result && (
               <>
-                {/* Block/Safe Banner */}
-                {result.should_block ? (
-                  <div className="flex items-center gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/30">
-                    <ShieldAlert className="w-8 h-8 text-destructive flex-shrink-0" />
-                    <div>
-                      <p className="font-bold text-destructive">⛔ BLOKLANGAN</p>
-                      <p className="text-sm text-destructive/80">{result.block_reason}</p>
-                    </div>
+                {result.should_block || result.harmful_content?.is_harmful ? (
+                  <div className="flex flex-col items-center justify-center py-16 border border-destructive/30 bg-destructive/5 rounded-xl">
+                    <ShieldAlert className="w-16 h-16 text-destructive mb-4" />
+                    <h2 className="text-2xl font-bold text-destructive mb-2">🚫 Bloklangan</h2>
+                    <p className="text-muted-foreground text-center max-w-md">
+                      Bu kontent xavfsizlik siyosatiga mos kelmaydi va bloklandi.
+                    </p>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/10 border border-primary/30">
-                    <ShieldCheck className="w-8 h-8 text-primary flex-shrink-0" />
-                    <div>
-                      <p className="font-bold text-primary">✅ XAVFSIZ</p>
-                      <p className="text-sm text-muted-foreground">Zararli kontent topilmadi</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Harmful content details */}
-                {result.harmful_content?.is_harmful && (
-                  <AnalysisCard title="Zararli kontent" icon={<AlertTriangle className="w-5 h-5 text-destructive" />}>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">Darajasi:</span>
-                        <Badge className={severityColor(result.harmful_content.severity)}>
-                          {result.harmful_content.severity.toUpperCase()}
-                        </Badge>
+                  <>
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/10 border border-primary/30">
+                      <ShieldCheck className="w-8 h-8 text-primary flex-shrink-0" />
+                      <div>
+                        <p className="font-bold text-primary">✅ XAVFSIZ</p>
+                        <p className="text-sm text-muted-foreground">Zararli kontent topilmadi</p>
                       </div>
-                      <p className="text-sm text-foreground">{result.harmful_content.details}</p>
-                      {result.harmful_content.categories.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {result.harmful_content.categories.map((c) => (
-                            <Badge key={c} variant="destructive" className="text-xs">{c}</Badge>
+                    </div>
+
+                    <AnalysisCard title="Xulosa" icon={<Sparkles className="w-5 h-5" />}>
+                      <p className="text-foreground leading-relaxed">{result.summary}</p>
+                    </AnalysisCard>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <AnalysisCard title="Til" icon={<Globe className="w-5 h-5" />}>
+                        <p className="text-2xl font-bold text-primary font-mono">{result.language}</p>
+                      </AnalysisCard>
+                      <AnalysisCard title="Kayfiyat" icon={<Heart className="w-5 h-5" />}>
+                        <p className={`text-2xl font-bold font-mono ${sentimentColor(result.sentiment)}`}>
+                          {sentimentEmoji(result.sentiment)} {result.sentiment}
+                        </p>
+                        <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((result.sentiment_score + 1) / 2) * 100}%` }} />
+                        </div>
+                      </AnalysisCard>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <AnalysisCard title="O'qish vaqti" icon={<Clock className="w-5 h-5" />}>
+                        <p className="text-2xl font-bold text-primary font-mono">{result.reading_time_minutes} min</p>
+                        <p className="text-sm text-muted-foreground">{result.word_count} so'z</p>
+                      </AnalysisCard>
+                      <AnalysisCard title="Turi" icon={<BookOpen className="w-5 h-5" />}>
+                        <p className="text-lg font-bold text-foreground">{result.content_type}</p>
+                        <p className="text-sm text-muted-foreground">{result.tone}</p>
+                      </AnalysisCard>
+                    </div>
+
+                    <AnalysisCard title="Mavzular" icon={<Tag className="w-5 h-5" />}>
+                      <div className="flex flex-wrap gap-2">
+                        {result.topics.map((t) => (
+                          <Badge key={t} variant="secondary" className="font-mono text-xs bg-primary/10 text-primary border-primary/20">{t}</Badge>
+                        ))}
+                      </div>
+                    </AnalysisCard>
+
+                    {result.key_entities.length > 0 && (
+                      <AnalysisCard title="Asosiy ob'ektlar" icon={<Users className="w-5 h-5" />}>
+                        <div className="flex flex-wrap gap-2">
+                          {result.key_entities.map((e) => (
+                            <Badge key={e} variant="outline" className="font-mono text-xs">{e}</Badge>
                           ))}
                         </div>
-                      )}
-                      {result.harmful_content.flagged_phrases?.length > 0 && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Aniqlangan so'zlar:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {result.harmful_content.flagged_phrases.map((p) => (
-                              <Badge key={p} variant="outline" className="text-xs border-destructive/30 text-destructive">{p}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </AnalysisCard>
-                )}
-
-                <AnalysisCard title="Xulosa" icon={<Sparkles className="w-5 h-5" />}>
-                  <p className="text-foreground leading-relaxed">{result.summary}</p>
-                </AnalysisCard>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <AnalysisCard title="Til" icon={<Globe className="w-5 h-5" />}>
-                    <p className="text-2xl font-bold text-primary font-mono">{result.language}</p>
-                  </AnalysisCard>
-                  <AnalysisCard title="Kayfiyat" icon={<Heart className="w-5 h-5" />}>
-                    <p className={`text-2xl font-bold font-mono ${sentimentColor(result.sentiment)}`}>
-                      {sentimentEmoji(result.sentiment)} {result.sentiment}
-                    </p>
-                    <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((result.sentiment_score + 1) / 2) * 100}%` }} />
-                    </div>
-                  </AnalysisCard>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <AnalysisCard title="O'qish vaqti" icon={<Clock className="w-5 h-5" />}>
-                    <p className="text-2xl font-bold text-primary font-mono">{result.reading_time_minutes} min</p>
-                    <p className="text-sm text-muted-foreground">{result.word_count} so'z</p>
-                  </AnalysisCard>
-                  <AnalysisCard title="Turi" icon={<BookOpen className="w-5 h-5" />}>
-                    <p className="text-lg font-bold text-foreground">{result.content_type}</p>
-                    <p className="text-sm text-muted-foreground">{result.tone}</p>
-                  </AnalysisCard>
-                </div>
-
-                <AnalysisCard title="Mavzular" icon={<Tag className="w-5 h-5" />}>
-                  <div className="flex flex-wrap gap-2">
-                    {result.topics.map((t) => (
-                      <Badge key={t} variant="secondary" className="font-mono text-xs bg-primary/10 text-primary border-primary/20">{t}</Badge>
-                    ))}
-                  </div>
-                </AnalysisCard>
-
-                {result.key_entities.length > 0 && (
-                  <AnalysisCard title="Asosiy ob'ektlar" icon={<Users className="w-5 h-5" />}>
-                    <div className="flex flex-wrap gap-2">
-                      {result.key_entities.map((e) => (
-                        <Badge key={e} variant="outline" className="font-mono text-xs">{e}</Badge>
-                      ))}
-                    </div>
-                  </AnalysisCard>
+                      </AnalysisCard>
+                    )}
+                  </>
                 )}
               </>
             )}
