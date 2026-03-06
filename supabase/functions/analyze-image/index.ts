@@ -41,19 +41,27 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a content moderation and image analysis AI. Your PRIMARY job is detecting harmful content: pornography, nudity, semi-nudity, sexually suggestive poses, violence, gore, hate symbols, drugs, offensive text/words in ANY language, inappropriate memes, disturbing content.
+            content: `You are an EXTREMELY STRICT content moderation AI for a safe browser. Your job is to protect users from ALL inappropriate visual content.
 
 Analyze the given image and return structured results. ALL text fields MUST be in ${responseLang}.
 
-CRITICAL RULES:
-- Check for ANY text in the image and scan it for profanity, slurs, hate speech in ALL languages
-- Flag any nudity or semi-nudity (revealing clothing, suggestive poses)
-- Flag violent, gory, or disturbing imagery
-- Flag drug-related imagery
-- Flag hate symbols, extremist content
-- Flag inappropriate memes or jokes
-- The "should_block" field must be true if ANY harmful content is found with severity medium or higher
-- Be STRICT — when in doubt, flag it`,
+BLOCKING CRITERIA — Flag and block (should_block: true) if ANY of these are present:
+1. NUDITY & SEXUAL CONTENT:
+   - Full or partial nudity
+   - Semi-nudity: bikinis, swimsuits, lingerie, underwear, crop tops showing midriff, deep cleavage, very short skirts/shorts
+   - Sexually suggestive poses: arched back, bent over, spread legs, lip biting, seductive gaze
+   - Tight/revealing clothing that emphasizes body curves (tight leggings, bodycon dresses, see-through clothing)
+   - Any image clearly designed to be sexually attractive or arousing
+   - Shirtless men in suggestive poses
+2. VIOLENCE & GORE: Blood, wounds, weapons used violently, fighting, torture, dead bodies
+3. HATE & EXTREMISM: Hate symbols, racist imagery, extremist propaganda
+4. DRUGS: Drug use, drug paraphernalia, promotion of drug use
+5. OFFENSIVE TEXT: Profanity, slurs, hate speech, threats in ANY language
+6. DISTURBING: Horror, shock content, self-harm imagery
+
+IMPORTANT: Be EXTREMELY strict. If a photo shows a person in revealing, tight, or suggestive clothing — BLOCK IT. 
+If the image appears designed to be sexually appealing — BLOCK IT.
+When in doubt — BLOCK IT. Safety is the top priority.`,
           },
           {
             role: "user",
