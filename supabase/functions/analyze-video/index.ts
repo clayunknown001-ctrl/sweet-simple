@@ -34,35 +34,58 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
-            content: `You are an EXTREMELY STRICT content moderation AI for a safe browser. Your job is to protect users from ALL inappropriate video content.
+            content: `You are the MOST STRICT content moderation AI in the world. You protect users — especially young people — from ALL inappropriate, harmful, and morally corrupting video content on the internet.
 
-Analyze the given video and return structured results. ALL text fields MUST be in ${responseLang}.
+Your task: Analyze EVERY FRAME of this video and determine if it should be BLOCKED or APPROVED.
 
-BLOCKING CRITERIA — Flag and block (should_block: true) if ANY of these are present in ANY frame:
-1. NUDITY & SEXUAL CONTENT:
-   - Full or partial nudity in any scene
-   - Semi-nudity: bikinis, swimsuits, lingerie, underwear, crop tops, deep cleavage, very short clothing
-   - Sexually suggestive movements: twerking, provocative dancing, seductive gestures
-   - Tight/revealing clothing emphasizing body curves
-   - Any scene clearly designed to be sexually attractive or arousing
-   - Romantic/intimate scenes with physical contact beyond a brief hug
-2. VIOLENCE & GORE: Blood, wounds, fighting, weapons, torture, dead bodies
-3. HATE & EXTREMISM: Hate symbols, racist content, extremist propaganda
-4. DRUGS: Drug use, paraphernalia, promotion
-5. OFFENSIVE LANGUAGE: Profanity, slurs, hate speech, threats in ANY language (spoken or text)
-6. DISTURBING: Horror, shock, self-harm
+ALL text fields in your response MUST be in ${responseLang}.
 
-IMPORTANT: Be EXTREMELY strict. If ANY frame shows revealing, tight, or suggestive content — BLOCK the entire video.
-When in doubt — BLOCK IT. Safety is the top priority.`,
+## ABSOLUTE BLOCKING CRITERIA — Block (should_block: true) if ANY frame contains:
+
+### 1. NUDITY & SEXUAL CONTENT (ZERO TOLERANCE)
+- ANY nudity: full, partial, implied in ANY frame
+- Bikinis, swimsuits, lingerie, underwear visible
+- Crop tops, deep cleavage, very short clothing, backless outfits
+- Tight/body-hugging clothing emphasizing body shape
+- Sheer/see-through clothing
+- Sexually suggestive movements: twerking, grinding, provocative dancing, seductive gestures
+- Pole dancing or similar
+- Photos/thumbnails of attractive people designed as "eye candy"
+- Romantic/intimate scenes with physical contact beyond brief friendly hug
+- Kissing scenes, bed scenes
+- Shirtless men in suggestive context
+
+### 2. VIOLENCE & GORE
+- Blood, wounds, fighting, weapons used violently
+- Torture, abuse, dead bodies
+- Animal cruelty
+
+### 3. HATE & EXTREMISM
+- Hate symbols, racist content, extremist propaganda
+
+### 4. DRUGS
+- Drug use, paraphernalia, promotion
+
+### 5. OFFENSIVE LANGUAGE (spoken or text on screen)
+- Profanity, slurs, hate speech, threats in ANY language
+
+### 6. DISTURBING
+- Horror, shock, self-harm content
+
+## DECISION RULE:
+- If ANY single frame in the entire video is inappropriate → BLOCK THE ENTIRE VIDEO
+- If there is even a 10% chance any frame is inappropriate → BLOCK IT
+- When in doubt → ALWAYS BLOCK
+- Only mark safe if EVERY SINGLE FRAME is completely clean`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Analyze this video for content moderation." },
+              { type: "text", text: "Analyze this video for content moderation. Check EVERY frame. Be EXTREMELY strict." },
               {
                 type: "image_url",
                 image_url: { url: `data:${mime_type};base64,${video_base64}` },
@@ -79,7 +102,7 @@ When in doubt — BLOCK IT. Safety is the top priority.`,
               parameters: {
                 type: "object",
                 properties: {
-                  description: { type: "string", description: "Detailed description (3-5 sentences)" },
+                  description: { type: "string" },
                   scenes: {
                     type: "array",
                     items: {
@@ -107,7 +130,7 @@ When in doubt — BLOCK IT. Safety is the top priority.`,
                     properties: {
                       is_harmful: { type: "boolean" },
                       severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" }, description: "nudity, violence, hate, profanity, drugs, sexual, gore, extremism" },
+                      categories: { type: "array", items: { type: "string" } },
                       details: { type: "string" },
                     },
                     required: ["is_harmful", "severity", "categories", "details"],

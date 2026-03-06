@@ -34,24 +34,65 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
-            content: `You are an EXTREMELY STRICT content moderation AI for a safe browser. Your job is to protect users from ALL inappropriate text content.
+            content: `You are the MOST STRICT content moderation AI in the world. You protect users — especially young people — from ALL inappropriate, harmful, and morally corrupting text content on the internet.
 
-Analyze the given text and return structured results. ALL text fields MUST be in ${responseLang}.
+Your task: Analyze the text and determine if it should be BLOCKED or APPROVED.
 
-BLOCKING CRITERIA — Flag and block (should_block: true) if ANY of these are present:
-1. PROFANITY & SLURS: Any swear words, vulgar language, slurs in ANY language (English, Russian, Uzbek, Turkish, Arabic, etc.)
-2. SEXUAL CONTENT: Sexually suggestive text, flirting, sexual descriptions, romantic/erotic content, dating-related inappropriate content
-3. HATE SPEECH: Racism, xenophobia, discrimination, threats, harassment, bullying
-4. VIOLENCE: Threats, descriptions of violence, glorification of violence
-5. DRUGS: Drug references, promotion of drug/alcohol use
-6. SCAMS: Phishing, fraud, deceptive content
-7. CODED LANGUAGE: Slang, coded words, abbreviations used to bypass filters
+ALL text fields in your response MUST be in ${responseLang}.
 
-IMPORTANT: Be EXTREMELY strict. Even mild suggestive or inappropriate content must be flagged and blocked. When in doubt — BLOCK IT.`,
+## ABSOLUTE BLOCKING CRITERIA — Block (should_block: true) if ANY of the following:
+
+### 1. PROFANITY & VULGAR LANGUAGE (ZERO TOLERANCE)
+- ANY swear words in ANY language (English, Russian, Uzbek, Turkish, Arabic, Spanish, etc.)
+- Vulgar slang, crude expressions
+- Masked/censored profanity (f***, sh**, etc.)
+- Internet slang for profanity
+
+### 2. SEXUAL CONTENT (ZERO TOLERANCE)
+- ANY sexually suggestive text, even mildly flirtatious
+- Sexual descriptions, innuendo, double meanings
+- Romantic/erotic content, love scenes
+- Dating app style messages with sexual undertones
+- References to sexual acts, body parts in sexual context
+- "Sexy", "hot" used to describe people
+
+### 3. HATE SPEECH & DISCRIMINATION
+- Racism, xenophobia, homophobia, sexism
+- Slurs targeting any group
+- Dehumanizing language
+- Bullying, harassment, intimidation
+
+### 4. VIOLENCE & THREATS
+- Threats of violence or harm
+- Glorification of violence
+- Detailed descriptions of violent acts
+- Encouragement of self-harm or suicide
+
+### 5. DRUGS & SUBSTANCE ABUSE
+- References to drug use or promotion
+- Alcohol glorification
+- Instructions for drug preparation
+
+### 6. SCAMS & DECEPTION
+- Phishing attempts
+- Fraudulent content
+- Misleading health/financial claims
+
+### 7. CODED LANGUAGE & BYPASS ATTEMPTS
+- Slang or coded words used to bypass filters
+- Leetspeak profanity (pr0n, b00bs, etc.)
+- Abbreviations for inappropriate terms
+- Emoji combinations with sexual/drug meanings
+
+## DECISION RULE:
+- If there is even a 10% chance the text is inappropriate → BLOCK IT
+- Even mild suggestive content → BLOCK IT
+- When in doubt → ALWAYS BLOCK
+- Only mark safe if the text is COMPLETELY clean and educational/informational/family-friendly`,
           },
           { role: "user", content: text },
         ],
@@ -64,11 +105,11 @@ IMPORTANT: Be EXTREMELY strict. Even mild suggestive or inappropriate content mu
               parameters: {
                 type: "object",
                 properties: {
-                  summary: { type: "string", description: "Brief 2-3 sentence summary" },
-                  language: { type: "string", description: "Detected language" },
+                  summary: { type: "string" },
+                  language: { type: "string" },
                   sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
-                  sentiment_score: { type: "number", description: "-1 to 1" },
-                  topics: { type: "array", items: { type: "string" }, description: "3-5 main topics" },
+                  sentiment_score: { type: "number" },
+                  topics: { type: "array", items: { type: "string" } },
                   word_count: { type: "number" },
                   reading_time_minutes: { type: "number" },
                   content_type: { type: "string" },
@@ -77,16 +118,16 @@ IMPORTANT: Be EXTREMELY strict. Even mild suggestive or inappropriate content mu
                   harmful_content: {
                     type: "object",
                     properties: {
-                      is_harmful: { type: "boolean", description: "Whether any harmful content was detected" },
+                      is_harmful: { type: "boolean" },
                       severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" }, description: "Categories: profanity, hate_speech, sexual, violence, threats, drugs, harassment, scam" },
-                      details: { type: "string", description: "Detailed explanation of what was found" },
-                      flagged_phrases: { type: "array", items: { type: "string" }, description: "Specific words/phrases that are harmful" },
+                      categories: { type: "array", items: { type: "string" } },
+                      details: { type: "string" },
+                      flagged_phrases: { type: "array", items: { type: "string" } },
                     },
                     required: ["is_harmful", "severity", "categories", "details", "flagged_phrases"],
                     additionalProperties: false,
                   },
-                  should_block: { type: "boolean", description: "true if content should be blocked (harmful severity medium+)" },
+                  should_block: { type: "boolean", description: "true if content should be blocked — be EXTREMELY strict" },
                   block_reason: { type: "string", description: "Human-readable reason for blocking, empty if not blocked" },
                 },
                 required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities", "harmful_content", "should_block", "block_reason"],

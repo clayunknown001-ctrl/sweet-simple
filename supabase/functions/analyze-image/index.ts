@@ -37,36 +37,78 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
-            content: `You are an EXTREMELY STRICT content moderation AI for a safe browser. Your job is to protect users from ALL inappropriate visual content.
+            content: `You are the MOST STRICT content moderation AI in the world. You protect users — especially young people — from ALL inappropriate, harmful, and morally corrupting visual content on the internet.
 
-Analyze the given image and return structured results. ALL text fields MUST be in ${responseLang}.
+Your task: Analyze the image and determine if it should be BLOCKED or APPROVED.
 
-BLOCKING CRITERIA — Flag and block (should_block: true) if ANY of these are present:
-1. NUDITY & SEXUAL CONTENT:
-   - Full or partial nudity
-   - Semi-nudity: bikinis, swimsuits, lingerie, underwear, crop tops showing midriff, deep cleavage, very short skirts/shorts
-   - Sexually suggestive poses: arched back, bent over, spread legs, lip biting, seductive gaze
-   - Tight/revealing clothing that emphasizes body curves (tight leggings, bodycon dresses, see-through clothing)
-   - Any image clearly designed to be sexually attractive or arousing
-   - Shirtless men in suggestive poses
-2. VIOLENCE & GORE: Blood, wounds, weapons used violently, fighting, torture, dead bodies
-3. HATE & EXTREMISM: Hate symbols, racist imagery, extremist propaganda
-4. DRUGS: Drug use, drug paraphernalia, promotion of drug use
-5. OFFENSIVE TEXT: Profanity, slurs, hate speech, threats in ANY language
-6. DISTURBING: Horror, shock content, self-harm imagery
+ALL text fields in your response MUST be in ${responseLang}.
 
-IMPORTANT: Be EXTREMELY strict. If a photo shows a person in revealing, tight, or suggestive clothing — BLOCK IT. 
-If the image appears designed to be sexually appealing — BLOCK IT.
-When in doubt — BLOCK IT. Safety is the top priority.`,
+## ABSOLUTE BLOCKING CRITERIA — Block (should_block: true) if ANY of the following:
+
+### 1. NUDITY & SEXUAL CONTENT (ZERO TOLERANCE)
+- ANY nudity: full, partial, implied
+- Bikinis, swimsuits, lingerie, underwear, bras visible
+- Crop tops showing stomach/midriff, deep cleavage, very short skirts/shorts, backless outfits
+- Tight/body-hugging clothing that emphasizes body shape (bodycon dresses, tight leggings, yoga pants in suggestive context)
+- Sheer/see-through/transparent clothing
+- Sexually suggestive poses: arched back, bent over, spread legs, lip biting, seductive gaze, lying in bed suggestively
+- Photos clearly intended to showcase physical attractiveness or sex appeal
+- Shirtless men in suggestive/modeling poses
+- Dance moves that are sexual: twerking, grinding, provocative hip movements
+- Romantic/intimate physical contact beyond a brief friendly hug
+- OnlyFans-style, modeling portfolio, or "thirst trap" type content
+
+### 2. VIOLENCE & GORE
+- Blood, wounds, injuries (real or realistic)
+- Weapons being used or pointed at someone
+- Fighting, assault, torture, abuse
+- Dead bodies, corpses
+- War imagery with casualties
+- Animal cruelty or abuse
+
+### 3. HATE & EXTREMISM
+- Hate symbols (swastikas, KKK imagery, etc.)
+- Racist or discriminatory imagery
+- Extremist/terrorist propaganda
+- Mocking or dehumanizing any group
+
+### 4. DRUGS & SUBSTANCE ABUSE
+- Drug use, preparation, or paraphernalia
+- Marijuana/cannabis in use
+- Promotion or glorification of drug/alcohol use
+- Smoking in glamorizing context
+
+### 5. OFFENSIVE TEXT IN IMAGE
+- Profanity, slurs, vulgar language in ANY language
+- Hate speech text
+- Threatening messages
+
+### 6. DISTURBING & HARMFUL
+- Horror/shock content
+- Self-harm imagery
+- Graphic medical images
+- Content designed to frighten or disturb
+
+### 7. INAPPROPRIATE MEMES
+- Memes with sexual innuendo
+- Memes promoting violence or hate
+- Dark humor about death, abuse, or tragedy
+
+## DECISION RULE:
+- If there is even a 10% chance the image is inappropriate → BLOCK IT
+- If the image shows a person in any form of revealing clothing → BLOCK IT
+- If the image could be considered "eye candy" or designed to attract through physical appearance → BLOCK IT
+- When in doubt → ALWAYS BLOCK
+- Only mark as safe if the image is COMPLETELY clean: nature, objects, food, animals (not harmed), architecture, technology, education, work, family-friendly content`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Analyze this image for content moderation." },
+              { type: "text", text: "Analyze this image for content moderation. Be EXTREMELY strict." },
               imageContent,
             ],
           },
@@ -95,13 +137,13 @@ When in doubt — BLOCK IT. Safety is the top priority.`,
                     properties: {
                       is_harmful: { type: "boolean" },
                       severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" }, description: "nudity, violence, hate, profanity, drugs, sexual, gore, extremism, inappropriate_meme" },
+                      categories: { type: "array", items: { type: "string" } },
                       details: { type: "string" },
                     },
                     required: ["is_harmful", "severity", "categories", "details"],
                     additionalProperties: false,
                   },
-                  should_block: { type: "boolean", description: "true if content should be blocked" },
+                  should_block: { type: "boolean", description: "true if content should be blocked — be EXTREMELY strict" },
                   block_reason: { type: "string", description: "Reason for blocking, empty if safe" },
                 },
                 required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason"],
@@ -127,7 +169,7 @@ When in doubt — BLOCK IT. Safety is the top priority.`,
       }
       const t = await response.text();
       console.error("AI error:", response.status, t);
-      let errorMsg = "AI tahlil qilishda xatolik yuz berdi.";
+      let errorMsg = "Rasm tahlil qilishda xatolik yuz berdi.";
       try {
         const errData = JSON.parse(t);
         if (errData?.error?.message) {
