@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { image_url, image_base64, language = "en" } = await req.json();
+    const { image_url, image_base64, language = "en", fast = false } = await req.json();
     const langMap: Record<string, string> = {
       en: "English",
       uz: "O'zbek tilida (Uzbek)",
@@ -30,6 +30,80 @@ serve(async (req) => {
       ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
       : { type: "image_url", image_url: { url: image_url } };
 
+    // FAST mode = brauzer real-time monitoring uchun (gemini flash, minimal output)
+    // FULL mode = batafsil tahlil sahifasi uchun (gemini pro, full output)
+    const model = fast ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
+
+    const systemPrompt = fast
+      ? `You are a real-time browser content moderator (like a traffic radar — always watching, instant decision).
+Response MUST be in ${responseLang}.
+
+BLOCK (should_block: true) IMMEDIATELY if image contains ANY:
+- Nudity (full/partial/implied), bikinis, lingerie, underwear, shirtless bodies
+- Sexually suggestive poses, intimate touching, kissing, bed/bedroom scenes
+- Tight/sheer/revealing clothing showing body shape
+- Cleavage, midriff, exposed thighs, backless outfits
+- Sexual dance, twerking, provocative movement
+- Violence, blood, weapons, gore, fighting, dead bodies
+- Drugs, drug use, paraphernalia
+- Hate symbols, offensive gestures
+- Disturbing/horror/self-harm imagery
+- Sexual text, profanity, slurs in image
+
+SAFE (should_block: false) ONLY: nature, food, animals (unharmed), objects, architecture, technology, fully-clothed people in non-suggestive context, text/documents, charts, UI screenshots.
+
+Rule: 1% doubt = BLOCK. Be the strictest moderator ever built.`
+      : `You are the MOST EXTREME content moderation AI. Response in ${responseLang}.
+
+BLOCK if ANY: nudity, bikinis, lingerie, underwear, shirtless, suggestive poses, intimate contact, tight/sheer clothing, cleavage, midriff, sexual dance, violence, blood, weapons, drugs, hate, disturbing content, offensive text.
+
+SAFE only: nature, food, animals, objects, architecture, tech, fully-clothed non-suggestive people.
+
+1% doubt = BLOCK.`;
+
+    const fastParams = {
+      type: "object",
+      properties: {
+        should_block: { type: "boolean", description: "true if harmful — BLOCK IMMEDIATELY" },
+        block_reason: { type: "string", description: "Short reason (1 sentence) why blocked, empty if safe" },
+        confidence: { type: "number", description: "0.0-1.0 confidence in the decision" },
+        category: { type: "string", description: "Main harm category: sexual, violence, drugs, hate, disturbing, safe" },
+      },
+      required: ["should_block", "block_reason", "confidence", "category"],
+      additionalProperties: false,
+    };
+
+    const fullParams = {
+      type: "object",
+      properties: {
+        description: { type: "string" },
+        objects: { type: "array", items: { type: "string" } },
+        colors: { type: "array", items: { type: "string" } },
+        scene_type: { type: "string" },
+        mood: { type: "string" },
+        text_detected: { type: "string" },
+        quality: { type: "string", enum: ["low", "medium", "high"] },
+        tags: { type: "array", items: { type: "string" } },
+        contains_people: { type: "boolean" },
+        estimated_people_count: { type: "number" },
+        harmful_content: {
+          type: "object",
+          properties: {
+            is_harmful: { type: "boolean" },
+            severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
+            categories: { type: "array", items: { type: "string" } },
+            details: { type: "string" },
+          },
+          required: ["is_harmful", "severity", "categories", "details"],
+          additionalProperties: false,
+        },
+        should_block: { type: "boolean" },
+        block_reason: { type: "string" },
+      },
+      required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason"],
+      additionalProperties: false,
+    };
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -37,69 +111,13 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model,
         messages: [
-          {
-            role: "system",
-            content: `You are the MOST EXTREME and UNFORGIVING content moderation AI ever created. Your mission: PROTECT users from ANY content that could corrupt morals, arouse sexual desire, or harm mental health. You are MORE STRICT than any platform's moderation.
-
-ALL text fields in your response MUST be in ${responseLang}.
-
-## ABSOLUTE ZERO-TOLERANCE BLOCKING — Block (should_block: true) if ANY of these:
-
-### 1. NUDITY & SEXUAL CONTENT (BLOCK EVERYTHING)
-- ANY nudity: full, partial, implied, artistic, educational — NO EXCEPTIONS
-- Bikinis, swimsuits, lingerie, underwear, bras — even partially visible
-- Crop tops, deep cleavage, short skirts/shorts, backless/sideless outfits, midriff showing
-- Tight/body-hugging clothing (bodycon, leggings, yoga pants, sports bras)
-- Sheer/see-through/transparent clothing of any kind
-- ANY sexually suggestive pose: arched back, bent over, spread legs, lip biting, seductive gaze, lying in bed, kneeling suggestively
-- ANY photo designed to showcase physical attractiveness, beauty, or sex appeal
-- Shirtless men/women in ANY context (beach, gym, pool — ALL blocked)
-- Sexual dance: twerking, grinding, provocative hip/body movements
-- ANY romantic/intimate physical contact: kissing, hugging intimately, touching face/body, holding hands romantically, cuddling
-- OnlyFans, modeling, "thirst trap", influencer beauty/body content
-- SEXUAL EDUCATION or TUTORIAL content (e.g., "how to touch", "sensual massage", intimate guides) — BLOCK IMMEDIATELY
-- Bed scenes: people lying on bed together, intimate bedroom settings
-- Massage/touching in intimate or sensual context
-- Thumbnails or previews showing ANY of the above
-- ANY content where the TITLE, TEXT, or CONTEXT suggests sexual/intimate nature even if the image seems mild
-
-### 2. VIOLENCE & GORE
-- Blood, wounds, injuries (real or realistic), weapons used violently
-- Fighting, assault, torture, abuse, dead bodies, war casualties
-- Animal cruelty or abuse of any kind
-
-### 3. HATE & EXTREMISM  
-- Hate symbols, racist/discriminatory imagery, extremist propaganda
-
-### 4. DRUGS & SUBSTANCE ABUSE
-- Drug use, preparation, paraphernalia, promotion, glamorized smoking/alcohol
-
-### 5. OFFENSIVE TEXT IN IMAGE
-- Profanity, slurs, vulgar language, hate speech, threats in ANY language
-- Sexual words, innuendo, or suggestive text
-
-### 6. DISTURBING & HARMFUL
-- Horror, shock, self-harm, graphic medical images, frightening content
-
-### 7. INAPPROPRIATE CONTEXT
-- Memes with sexual innuendo, violence promotion, dark humor about tragedy
-- "Challenge" content that could cause harm
-- Content normalizing inappropriate behavior
-
-## CRITICAL DECISION RULES:
-- If there is even 1% chance the image is inappropriate → BLOCK IT
-- If ANY person shows skin beyond face, hands, and fully-clothed arms → BLOCK IT
-- If the image could trigger sexual thoughts in ANY viewer → BLOCK IT
-- If the image title/context/surrounding text suggests inappropriate content → BLOCK IT
-- NEVER give benefit of the doubt — ALWAYS BLOCK when uncertain
-- SAFE content = ONLY: nature, objects, food, animals (unharmed), architecture, technology, education (non-sexual), fully-clothed professional/family content`,
-          },
+          { role: "system", content: systemPrompt },
           {
             role: "user",
             content: [
-              { type: "text", text: "Analyze this image for content moderation. Be EXTREMELY strict." },
+              { type: "text", text: fast ? "Quickly judge: BLOCK or SAFE?" : "Analyze this image. Be EXTREMELY strict." },
               imageContent,
             ],
           },
@@ -109,37 +127,8 @@ ALL text fields in your response MUST be in ${responseLang}.
             type: "function",
             function: {
               name: "return_analysis",
-              description: "Return image analysis with content moderation results",
-              parameters: {
-                type: "object",
-                properties: {
-                  description: { type: "string" },
-                  objects: { type: "array", items: { type: "string" } },
-                  colors: { type: "array", items: { type: "string" } },
-                  scene_type: { type: "string" },
-                  mood: { type: "string" },
-                  text_detected: { type: "string" },
-                  quality: { type: "string", enum: ["low", "medium", "high"] },
-                  tags: { type: "array", items: { type: "string" } },
-                  contains_people: { type: "boolean" },
-                  estimated_people_count: { type: "number" },
-                  harmful_content: {
-                    type: "object",
-                    properties: {
-                      is_harmful: { type: "boolean" },
-                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" } },
-                      details: { type: "string" },
-                    },
-                    required: ["is_harmful", "severity", "categories", "details"],
-                    additionalProperties: false,
-                  },
-                  should_block: { type: "boolean", description: "true if content should be blocked — be EXTREMELY strict" },
-                  block_reason: { type: "string", description: "Reason for blocking, empty if safe" },
-                },
-                required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason"],
-                additionalProperties: false,
-              },
+              description: "Return content moderation decision",
+              parameters: fast ? fastParams : fullParams,
             },
           },
         ],
