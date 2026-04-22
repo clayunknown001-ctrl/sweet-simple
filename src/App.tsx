@@ -8,6 +8,7 @@ import TextAnalysis from "./pages/TextAnalysis";
 import ImageAnalysis from "./pages/ImageAnalysis";
 import VideoAnalysis from "./pages/VideoAnalysis";
 import ApiDocs from "./pages/ApiDocs";
+import Extension from "./pages/Extension";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/image-analysis" element={<ImageAnalysis />} />
           <Route path="/video-analysis" element={<VideoAnalysis />} />
           <Route path="/api-docs" element={<ApiDocs />} />
+          <Route path="/extension" element={<Extension />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

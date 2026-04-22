@@ -59,20 +59,22 @@ export default function Index() {
           Matn va rasmlarni sun'iy intellekt yordamida chuqur tahlil qiling.
           Kayfiyat, til, ob'ektlar, ranglar va boshqalarni bir zumda aniqlang.
         </p>
-        <div className="flex gap-4 justify-center">
-          <Button asChild className="bg-primary/20 text-primary hover:bg-primary/30 border border-primary/30 glow-primary px-6">
-            <Link to="/text-analysis">
-              <FileText className="w-4 h-4 mr-2" />
-              Matn tahlili
+        <div className="flex flex-wrap gap-4 justify-center">
+          <Button asChild className="bg-primary text-primary-foreground hover:opacity-90 glow-primary px-8 py-6 text-base">
+            <Link to="/extension">
+              🛡️ Brauzer Radarni o'rnatish
             </Link>
           </Button>
-          <Button asChild className="bg-cyan/20 text-cyan hover:bg-cyan/30 border border-cyan/30 glow-cyan px-6">
+          <Button asChild variant="outline" className="border-cyan/30 text-cyan hover:bg-cyan/10 px-6">
             <Link to="/image-analysis">
               <ImageIcon className="w-4 h-4 mr-2" />
-              Rasm tahlili
+              Rasm sinash
             </Link>
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground mt-4 font-mono">
+          ↑ Pinterest, Instagram, Facebook va boshqa saytlarda avtomatik ishlaydi
+        </p>
       </section>
 
       {/* Features */}
