@@ -16,8 +16,43 @@
   const CACHE = new Map();
   const PROCESSING = new WeakSet();
   const QUEUE = [];
+  const RISKY_KEYWORDS = [
+    "porn", "porno", "xxx", "sex", "sexy", "nude", "nudity", "nsfw", "erotic", "adult",
+    "fetish", "onlyfans", "boobs", "tits", "ass", "pussy", "bikini", "lingerie", "thong",
+    "swimsuit", "see through", "topless", "cameltoe", "пляжная фотография", "эрот", "порно",
+    "секс", "обнаж", "купальник", "ichki kiyim", "yalang'och", "yalangoch", "behayo", "jinsiy"
+  ];
   let active = 0;
   let blockedCount = 0;
+
+  function normalizeText(value) {
+    return decodeURIComponent(String(value || "")).toLowerCase().replace(/\+/g, " ");
+  }
+
+  function containsRiskyKeywords(value) {
+    const text = normalizeText(value);
+    return text && RISKY_KEYWORDS.some((keyword) => text.includes(keyword));
+  }
+
+  function collectElementContext(el, url) {
+    const parts = [
+      url,
+      location.href,
+      document.title,
+      el.alt,
+      el.title,
+      el.getAttribute("aria-label"),
+      el.getAttribute("data-test-id"),
+      el.closest("a")?.href,
+      el.closest("a")?.textContent,
+      el.parentElement?.textContent,
+    ];
+    return parts.filter(Boolean).join(" \n ").slice(0, 1200);
+  }
+
+  function shouldEmergencyBlock(el, url) {
+    return containsRiskyKeywords(collectElementContext(el, url));
+  }
 
   // --- shield UI ---
   function shieldElement(el, reason) {
@@ -61,11 +96,13 @@
         },
         body: JSON.stringify({ image_url: url, fast: true, language: "uz" }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const result = { block: !!data.should_block, reason: data.block_reason || data.category || "" };
       CACHE.set(url, result);
       return result;
     } catch (e) {
+      console.warn("[AI Radar] analyzeUrl fallback:", e);
       return { block: false, reason: "" };
     }
   }
@@ -81,6 +118,7 @@
         },
         body: JSON.stringify({ image_base64: base64, fast: true, language: "uz" }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
     } catch {
@@ -107,6 +145,10 @@
     const url = img.currentSrc || img.src;
     if (!url || url.startsWith("data:") || url.length < 10) return;
     if (img.naturalWidth && img.naturalWidth < MIN_SIZE) return;
+    if (shouldEmergencyBlock(img, url)) {
+      shieldElement(img, "Riskli matn yoki qidiruv konteksti aniqlandi");
+      return;
+    }
     PROCESSING.add(img);
     img.classList.add("ai-radar-scanning");
     enqueue(async () => {
@@ -119,6 +161,10 @@
   function processVideo(video) {
     if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
     const poster = video.poster;
+    if (shouldEmergencyBlock(video, poster || video.currentSrc || video.src)) {
+      shieldElement(video, "Riskli matn yoki qidiruv konteksti aniqlandi");
+      return;
+    }
     if (poster && !poster.startsWith("data:")) {
       PROCESSING.add(video);
       enqueue(async () => {

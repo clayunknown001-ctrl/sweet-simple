@@ -27,7 +27,41 @@
   const CACHE = new Map();          // URL -> {block, reason} (qayta tahlil qilmaslik)
   const PROCESSING = new WeakSet(); // Element-level dedup
   const QUEUE = [];
+  const RISKY_KEYWORDS = [
+    "porn", "porno", "xxx", "sex", "sexy", "nude", "nudity", "nsfw", "erotic", "adult",
+    "fetish", "onlyfans", "boobs", "tits", "ass", "pussy", "bikini", "lingerie", "thong",
+    "swimsuit", "see through", "topless", "cameltoe", "пляжная фотография", "эрот", "порно",
+    "секс", "обнаж", "купальник", "ichki kiyim", "yalang'och", "yalangoch", "behayo", "jinsiy"
+  ];
   let activeRequests = 0;
+
+  function normalizeText(value) {
+    return decodeURIComponent(String(value || "")).toLowerCase().replace(/\+/g, " ");
+  }
+
+  function containsRiskyKeywords(value) {
+    const text = normalizeText(value);
+    return text && RISKY_KEYWORDS.some((keyword) => text.includes(keyword));
+  }
+
+  function collectElementContext(el, url) {
+    const parts = [
+      url,
+      location.href,
+      document.title,
+      el.alt,
+      el.title,
+      el.getAttribute("aria-label"),
+      el.closest("a")?.href,
+      el.closest("a")?.textContent,
+      el.parentElement?.textContent,
+    ];
+    return parts.filter(Boolean).join(" \n ").slice(0, 1200);
+  }
+
+  function shouldEmergencyBlock(el, url) {
+    return containsRiskyKeywords(collectElementContext(el, url));
+  }
 
   // ---- 1. UI: bloklangan element o'rniga ko'rsatiladigan overlay ----
   const style = document.createElement("style");
@@ -104,6 +138,7 @@
         },
         body: JSON.stringify({ image_url: url, fast: true, language: "uz" }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const result = {
         block: !!data.should_block,
@@ -139,6 +174,10 @@
     const url = img.currentSrc || img.src;
     if (!url || url.startsWith("data:") || url.length < 10) return;
     if (img.naturalWidth && img.naturalWidth < MIN_SIZE) return;
+    if (shouldEmergencyBlock(img, url)) {
+      shieldElement(img, "Riskli matn yoki qidiruv konteksti aniqlandi");
+      return;
+    }
     PROCESSING.add(img);
 
     enqueue(async () => {
@@ -149,6 +188,10 @@
 
   function processVideo(video) {
     if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
+    if (shouldEmergencyBlock(video, video.poster || video.currentSrc || video.src)) {
+      shieldElement(video, "Riskli matn yoki qidiruv konteksti aniqlandi");
+      return;
+    }
     // Video dan poster (thumbnail) ni tahlil qilamiz — tez va arzon
     const url = video.poster || video.currentSrc || video.src;
     if (!url || url.startsWith("blob:") || url.startsWith("data:")) {
