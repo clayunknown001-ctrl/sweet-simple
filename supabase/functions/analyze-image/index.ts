@@ -30,9 +30,9 @@ serve(async (req) => {
       ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
       : { type: "image_url", image_url: { url: image_url } };
 
-    // FAST mode = brauzer real-time monitoring uchun (gemini flash, minimal output)
+    // FAST mode = brauzer real-time monitoring (eng arzon, eng tez — kreditni cho'zish uchun)
     // FULL mode = batafsil tahlil sahifasi uchun (gemini pro, full output)
-    const model = fast ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
+    const model = fast ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-pro";
 
     // BEHAVIORAL REASONING LAYER — based on peer-reviewed research:
     // - PMC3896127 (Kühn & Gallinat 2014): porn exposure ↓ grey matter in striatum, ↓ reward sensitivity
