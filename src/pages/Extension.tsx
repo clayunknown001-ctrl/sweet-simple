@@ -158,7 +158,7 @@ export default function Extension() {
         </div>
 
         {/* Eslatma */}
-        <div className="rounded-2xl border border-cyan/30 bg-cyan/5 p-6">
+        <div className="rounded-2xl border border-cyan/30 bg-cyan/5 p-6 mb-10">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-cyan shrink-0 mt-0.5" />
             <div className="text-sm">
@@ -166,10 +166,132 @@ export default function Extension() {
               <p className="text-muted-foreground">
                 Kengaytma har bir ko'rinadigan rasm/videoni Lovable Cloud orqali Gemini 2.5 Flash
                 AI'ga yuboradi. AI 4-bosqichli neyropsixologik mantiq bilan tahlil qiladi va
-                1% shubha bo'lsa ham bloklaydi. Tezkor rejim — har bir element 0.5-2 soniyada
-                tekshiriladi.
+                1% shubha bo'lsa ham bloklaydi.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* === BRAUZER ISHLAB CHIQUVCHILARI UCHUN === */}
+        <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-cyan/5 p-8 mb-10 glow-primary">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-3 rounded-xl bg-primary/10 text-primary">
+              <Cpu className="w-7 h-7" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">
+                🚀 O'z brauzeringizga o'rnatish
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Brauzer ishlab chiquvchilari uchun — har bir foydalanuvchi alohida
+                kengaytma yuklamasin
+              </p>
+            </div>
+          </div>
+
+          <p className="text-muted-foreground mb-6 leading-relaxed">
+            Agar siz <span className="text-primary font-bold">o'z brauzeringizni</span> (Electron,
+            Chromium fork, CEF) yaratayotgan bo'lsangiz, AI Radar'ni{" "}
+            <span className="text-cyan font-bold">brauzeringiz ichiga o'rnatilgan funksiya</span>{" "}
+            sifatida qo'shing. Shunda har bir foydalanuvchi avtomatik himoyalanadi —
+            qo'shimcha kengaytma o'rnatish shart emas.
+          </p>
+
+          <div className="rounded-lg border border-border bg-background/60 p-4 mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Code2 className="w-4 h-4 text-primary" />
+              <span className="font-mono font-bold text-foreground">monitor.js</span>
+              <span className="text-xs text-muted-foreground">— universal kuzatuv skripti</span>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Bu skriptni har bir yangi tab ochilganda avtomatik inject qiling.
+              U barcha rasm/videolarni kuzatadi va AI orqali bloklaydi.
+            </p>
+            <button
+              onClick={() => {
+                fetch("/monitor.js")
+                  .then((res) => res.blob())
+                  .then((blob) => {
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = "monitor.js";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(a.href);
+                  });
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-mono text-sm font-bold hover:opacity-90"
+            >
+              <Download className="w-4 h-4" />
+              monitor.js yuklab olish
+            </button>
+          </div>
+
+          <h3 className="text-foreground font-bold mb-3 font-mono">
+            Integratsiya misollari:
+          </h3>
+
+          <div className="rounded-lg border border-border bg-background/60 p-4 mb-3">
+            <div className="font-mono text-sm font-bold text-cyan mb-2">⚡ Electron brauzer</div>
+            <pre className="text-xs font-mono text-muted-foreground overflow-x-auto bg-muted/30 p-3 rounded">
+{`// main.js — har bir BrowserWindow uchun
+win.webContents.on('did-finish-load', () => {
+  const fs = require('fs');
+  const monitorJs = fs.readFileSync('./monitor.js', 'utf8');
+  win.webContents.executeJavaScript(monitorJs);
+});`}
+            </pre>
+          </div>
+
+          <div className="rounded-lg border border-border bg-background/60 p-4 mb-3">
+            <div className="font-mono text-sm font-bold text-cyan mb-2">🔧 Chromium fork (C++)</div>
+            <pre className="text-xs font-mono text-muted-foreground overflow-x-auto bg-muted/30 p-3 rounded">
+{`// content/renderer/render_frame_impl.cc
+// DidFinishLoad() ichida:
+std::string script = ReadFile("ai_radar/monitor.js");
+frame_->ExecuteScript(WebScriptSource(
+  WebString::FromUTF8(script)
+));`}
+            </pre>
+          </div>
+
+          <div className="rounded-lg border border-border bg-background/60 p-4 mb-3">
+            <div className="font-mono text-sm font-bold text-cyan mb-2">
+              🧩 CEF (Chromium Embedded Framework)
+            </div>
+            <pre className="text-xs font-mono text-muted-foreground overflow-x-auto bg-muted/30 p-3 rounded">
+{`// CefLoadHandler::OnLoadEnd
+void OnLoadEnd(CefRefPtr<CefBrowser> browser,
+               CefRefPtr<CefFrame> frame, int code) {
+  frame->ExecuteJavaScript(monitor_js, frame->GetURL(), 0);
+}`}
+            </pre>
+          </div>
+
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <div className="font-mono text-sm font-bold text-primary mb-2">
+              🌐 API endpoint (ishlamoqda)
+            </div>
+            <pre className="text-xs font-mono text-muted-foreground overflow-x-auto bg-muted/30 p-3 rounded">
+{`POST https://iwyntbeqdvsbzvmskpaw.supabase.co
+       /functions/v1/analyze-image
+
+Body: { "image_url": "...", "fast": true, "language": "uz" }
+Response: { "should_block": true, "block_reason": "..." }`}
+            </pre>
+            <p className="text-xs text-muted-foreground mt-2">
+              💡 Hech qanday API kalit shart emas — public anon key{" "}
+              <span className="text-primary">monitor.js</span> ichida. Cheksiz so'rov, bepul.
+            </p>
+          </div>
+
+          <div className="mt-6 p-4 rounded-lg border border-cyan/30 bg-cyan/5">
+            <p className="text-sm text-muted-foreground">
+              <span className="text-cyan font-bold">Natija:</span> Sizning brauzeringizni
+              yuklab olgan har bir foydalanuvchi avtomatik AI himoyasi ostida bo'ladi.
+              Hech qanday sozlash, hech qanday extension — sof native tajriba.
+            </p>
           </div>
         </div>
       </section>
