@@ -1,4 +1,4 @@
-import { Download, Shield, Chrome, CheckCircle2, AlertCircle, Eye } from "lucide-react";
+import { Download, Shield, Chrome, CheckCircle2, AlertCircle, Eye, Code2, Cpu } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
 export default function Extension() {
