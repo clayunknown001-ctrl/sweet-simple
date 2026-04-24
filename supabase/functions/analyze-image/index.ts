@@ -125,7 +125,7 @@ async function callGoogleAIStudio({
       functionDeclarations: [{
         name: "return_analysis",
         description: "Return content moderation decision",
-        parameters: params,
+        parameters: stripUnsupported(params),
       }],
     }],
     toolConfig: {
