@@ -74,6 +74,20 @@ const fullParams = {
   additionalProperties: false,
 };
 
+// Google's Gemini API rejects `additionalProperties`. Strip it recursively.
+function stripUnsupported(schema: any): any {
+  if (Array.isArray(schema)) return schema.map(stripUnsupported);
+  if (schema && typeof schema === "object") {
+    const out: any = {};
+    for (const k of Object.keys(schema)) {
+      if (k === "additionalProperties") continue;
+      out[k] = stripUnsupported(schema[k]);
+    }
+    return out;
+  }
+  return schema;
+}
+
 // ============ PROVIDER 1: Google AI Studio (FREE) ============
 async function callGoogleAIStudio({
   apiKey, fast, systemPrompt, userText, imageBase64, imageUrl, mimeType, params,
