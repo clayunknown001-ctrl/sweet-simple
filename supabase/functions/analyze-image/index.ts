@@ -5,30 +5,81 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// =============================================================
+// BEHAVIORAL REASONING — Neuroscience + Psychology grounded
+// Sources: Kühn & Gallinat 2014, Love et al 2016, PMC7328032,
+// Wikipedia: Effects of pornography, Darwin: From So Simple a Beginning
+// =============================================================
 const reasoningLayer = `
-## BEHAVIORAL REASONING LAYER (How Human Feelings Work):
-Before deciding, REASON like a neuroscientist + psychologist:
-1. DOPAMINE & REWARD CIRCUIT (Kühn & Gallinat, 2014): sexual/suggestive imagery shrinks striatum → BLOCK arousal-bait.
-2. PREFRONTAL CORTEX HIJACK (PMC7328032): lust shuts down judgment → BLOCK thirst-traps.
-3. DESENSITIZATION & OBJECTIFICATION: BLOCK content reducing humans to body parts.
-4. EVOLUTIONARY SIGNAL (Darwin): lust ≠ love; protect from algorithmic exploitation.
-5. COMPULSION LOOP (Love et al., 2016): when in doubt, BLOCK.
+## NEUROPSYCHOLOGICAL REASONING (apply silently before deciding):
 
-REASONING: Step 1 what's shown → Step 2 emotion engineered → Step 3 wellbeing or hijack → Step 4 APPROVE/BLOCK.
+A. DOPAMINE & REWARD CIRCUIT (Kühn & Gallinat, 2014):
+   Sexual/arousal-engineered imagery triggers excessive dopamine release → over time SHRINKS striatum, reduces gray matter, causes desensitization. Block content engineered to trigger this loop.
+
+B. PREFRONTAL CORTEX HIJACK (PMC7328032, Love et al. 2016):
+   Lust-imagery shuts down judgment within 200ms. User cannot "decide" — the brain is hijacked before conscious thought. Therefore: BLOCK BEFORE the hijack happens, not after.
+
+C. ALGORITHMIC EXPLOITATION:
+   Modern platforms (Instagram, Pinterest, TikTok) optimize for engagement = arousal. Thirst-trap framing, dance reels with hip emphasis, mirror-selfie + minimal clothing, profile photos with seductive intent — these are ENGINEERED to bypass judgment. Block them even when "no nudity".
+
+D. EVOLUTIONARY SIGNAL (Darwin):
+   Lust ≠ love ≠ wellbeing. Sexual selection is a mechanism for reproduction, not human flourishing. Don't conflate "natural" with "harmless".
+
+E. CONTEXT MATTERS (avoid false positives):
+   - A clothed woman in a car ad → SAFE
+   - A clothed man giving a presentation → SAFE
+   - A family photo at the beach → SAFE
+   - Children, food, animals (unharmed), nature, tech, architecture → SAFE
+   - A medical/educational diagram → SAFE
+   - A clothed athlete in sports context → SAFE
+
+## DECISION FRAMEWORK (think step by step):
+Step 1: What is literally shown? (objects, people, clothing, pose, setting)
+Step 2: Is the framing engineered for arousal? (camera angle on body parts, mirror selfies, lip emphasis, hip emphasis, suggestive pose)
+Step 3: Is the context legitimate? (commerce, news, education, family, sports, art)
+Step 4: Would showing this hijack the viewer's prefrontal cortex (B above)?
+   → YES = BLOCK
+   → NO = APPROVE
+
+## LUST/AROUSAL TRIGGER COMBINATIONS (BLOCK these):
+- Bikini, lingerie, underwear, swimsuit (any)
+- Cleavage emphasis, midriff exposure, exposed thighs in non-sport context
+- See-through, body-hugging fabric in non-fitness context
+- Mirror selfies + minimal/tight clothing
+- Lip emphasis + eye contact + suggestive pose
+- Hip emphasis, twerking, grinding, seductive dancing
+- Profile photos with seductive framing
+- "Art" nudity (still BLOCK — same brain effect)
+- Beach/pool photos where focus is body, not activity
+- Fitness content where camera lingers on body, not exercise
+
+## VIOLENCE / OTHER HARM (BLOCK):
+- Blood, gore, wounds, corpses
+- Weapons in active/threatening use
+- Drug use, paraphernalia
+- Hate symbols (swastika, etc.)
+- Self-harm, suicide imagery
+- Disturbing/horror imagery
+- Sexual or profane on-screen text
 `;
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
+  const common = `You are a content moderation AI for a browser radar that protects users from harmful/arousing content.
+Response language for block_reason: ${responseLang}.
+${reasoningLayer}
+
+CRITICAL CALIBRATION:
+- Default to APPROVE for: cars, food, nature, animals, architecture, tech, fully-clothed people in normal contexts, charts, text, UI screenshots, art (non-nude), educational content, news, sports (non-arousal-framed)
+- Only BLOCK when you can clearly identify a lust/arousal trigger combination OR violence/harm category above.
+- "Clothed person" alone is NOT a reason to block. Look at framing, pose, intent.
+- When uncertain about a clothed person in a normal context → APPROVE.
+- When the framing is clearly engineered for arousal → BLOCK with high confidence.
+
+Return confidence between 0 and 1. Only block if confidence > 0.65.`;
+
   return fast
-    ? `You are a real-time browser content moderator with neuropsychology expertise. Response in ${responseLang}.
-${reasoningLayer}
-BLOCK if ANY: nudity, bikinis, lingerie, underwear, shirtless, suggestive poses, intimate touching, kissing, bed scenes, tight/sheer clothing, cleavage, midriff, exposed thighs, sexual dance, thirst-trap framing, violence, blood, weapons, gore, drugs, hate symbols, disturbing/horror/self-harm, sexual text/profanity.
-SAFE only: nature, food, animals (unharmed), objects, architecture, tech, fully-clothed non-suggestive people, text/documents, charts, UI screenshots.
-1% doubt = BLOCK.`
-    : `MOST EXTREME content moderator with neuropsychological reasoning. Response in ${responseLang}.
-${reasoningLayer}
-BLOCK if ANY: nudity, bikinis, lingerie, underwear, shirtless, suggestive poses, intimate contact, tight/sheer clothing, cleavage, midriff, sexual dance, violence, blood, weapons, drugs, hate, disturbing content, offensive text, arousal-engineered framing.
-SAFE only: nature, food, animals, objects, architecture, tech, fully-clothed non-suggestive people in wholesome contexts.
-Apply 4-step reasoning. 1% doubt = BLOCK.`;
+    ? `${common}\nRespond quickly with a binary decision.`
+    : `${common}\nApply the full 4-step reasoning framework before deciding.`;
 }
 
 const fastParams = {
@@ -69,12 +120,12 @@ const fullParams = {
     },
     should_block: { type: "boolean" },
     block_reason: { type: "string" },
+    confidence: { type: "number" },
   },
-  required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason"],
+  required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason", "confidence"],
   additionalProperties: false,
 };
 
-// Google's Gemini API rejects `additionalProperties`. Strip it recursively.
 function stripUnsupported(schema: any): any {
   if (Array.isArray(schema)) return schema.map(stripUnsupported);
   if (schema && typeof schema === "object") {
@@ -88,7 +139,7 @@ function stripUnsupported(schema: any): any {
   return schema;
 }
 
-// ============ PROVIDER 1: Google AI Studio (FREE) ============
+// ============ PROVIDER 1: Google AI Studio (FREE, low quota) ============
 async function callGoogleAIStudio({
   apiKey, fast, systemPrompt, userText, imageBase64, imageUrl, mimeType, params,
 }: {
@@ -97,7 +148,6 @@ async function callGoogleAIStudio({
 }) {
   const model = fast ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
 
-  // If only URL provided, fetch and convert to base64
   let b64 = imageBase64;
   let mt = mimeType;
   if (!b64 && imageUrl) {
@@ -151,7 +201,6 @@ async function callGoogleAIStudio({
   for (const p of parts) {
     if (p.functionCall?.args) return p.functionCall.args;
   }
-  // Fallback: try to parse text as JSON
   const text = parts.map((p: any) => p.text).filter(Boolean).join("");
   if (text) {
     try { return JSON.parse(text); } catch { /* ignore */ }
@@ -159,14 +208,14 @@ async function callGoogleAIStudio({
   throw new Error("Google AI Studio: no function call in response");
 }
 
-// ============ PROVIDER 2: Lovable AI Gateway (PAID FALLBACK) ============
+// ============ PROVIDER 2: Lovable AI Gateway (PAID) ============
 async function callLovableGateway({
   apiKey, fast, systemPrompt, userText, imageContent, params,
 }: {
   apiKey: string; fast: boolean; systemPrompt: string; userText: string;
   imageContent: any; params: any;
 }) {
-  const model = fast ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-pro";
+  const model = fast ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-flash";
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -216,14 +265,16 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = fast ? "Quickly judge: BLOCK or SAFE?" : "Analyze this image. Be EXTREMELY strict.";
+    const userText = fast
+      ? "Apply the calibration rules. Return APPROVE for normal/clothed/non-arousal-framed content. Only BLOCK with confidence>0.65 when arousal/harm triggers are clearly present."
+      : "Analyze with the 4-step framework. Default to APPROVE; block only with strong evidence.";
     const params = fast ? fastParams : fullParams;
 
-    // Try Google AI Studio first (FREE)
     let analysis: any = null;
     let providerUsed = "none";
     let firstError: any = null;
 
+    // Try Google first (free but limited)
     if (GEMINI_API_KEY) {
       try {
         analysis = await callGoogleAIStudio({
@@ -232,14 +283,13 @@ serve(async (req) => {
           mimeType: "image/jpeg", params,
         });
         providerUsed = "google-ai-studio";
-        console.log("✅ Used Google AI Studio (FREE)");
       } catch (e: any) {
         firstError = e;
-        console.warn("⚠️ Google AI Studio failed, falling back:", e?.message);
+        if (e?.status !== 429) console.warn("Google AI Studio failed:", e?.message?.slice(0, 200));
       }
     }
 
-    // Fallback: Lovable Gateway
+    // Fallback to Lovable Gateway
     if (!analysis && LOVABLE_API_KEY) {
       const imageContent = image_base64
         ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
@@ -249,15 +299,14 @@ serve(async (req) => {
           apiKey: LOVABLE_API_KEY, fast, systemPrompt, userText, imageContent, params,
         });
         providerUsed = "lovable-gateway";
-        console.log("✅ Used Lovable Gateway (paid)");
       } catch (e: any) {
         if (e?.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+          return new Response(JSON.stringify({ error: "Rate limit exceeded.", should_block: false }), {
             status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
         if (e?.status === 402) {
-          return new Response(JSON.stringify({ error: "Both AI providers exhausted. Top up Google AI Studio quota or Lovable AI credits." }), {
+          return new Response(JSON.stringify({ error: "AI credits exhausted.", should_block: false }), {
             status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
@@ -267,9 +316,16 @@ serve(async (req) => {
 
     if (!analysis) {
       const msg = firstError?.message || "All AI providers failed";
-      return new Response(JSON.stringify({ error: msg }), {
+      return new Response(JSON.stringify({ error: msg, should_block: false }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Confidence-gated blocking — protects against false positives
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
+    if (analysis.should_block && conf < 0.65) {
+      analysis.should_block = false;
+      analysis.block_reason = "Low confidence — approved";
     }
 
     return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
@@ -277,7 +333,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("analyze-image error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error", should_block: false }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
