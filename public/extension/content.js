@@ -358,32 +358,38 @@
     // 2. Whitelist domain → AI'siz o'tkaz
     if (WHITELISTED) return;
 
-    // 3. Lokal skin-tone (tekin)
     img.classList.add("ai-radar-scanning");
+
+    // 3. LOKAL NSFW MODEL (NSFWJS) — eng aniq, tekin, cheksiz
+    if (nsfwReady) {
+      const r = await classifyLocal(url);
+      if (r && r.preds) {
+        const decision = decideFromNsfw(r.preds);
+        if (decision?.block) {
+          img.classList.remove("ai-radar-scanning");
+          shieldElement(img, decision.reason);
+          return;
+        }
+        if (decision?.confident && !decision.block) {
+          img.classList.remove("ai-radar-scanning");
+          return; // aniq xavfsiz — cloud'ga yuborilmaydi
+        }
+        // shubhali → cloud'ga o'tadi
+      }
+    }
+
+    // 4. Lokal skin-tone (NSFW yo'q bo'lsa fallback)
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    // Juda ko'p teri rangi + katta rasm → kuchli signal
-    if (!error && skinPct > 0.55 && img.naturalWidth >= 200) {
-      // Cloud AI bilan tasdiqlash (agar yoqilgan bo'lsa)
-      if (aiDisabled) {
-        // AI yo'q — local heuristic asosida blok (juda yuqori foiz)
-        if (skinPct > 0.7) {
-          shieldElement(img, "Ko'p ochiq teri (lokal)");
-        }
-        return;
-      }
-      enqueue(async () => {
-        const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason);
-      });
+    const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 200;
+
+    // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
+    if (aiDisabled) {
+      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)");
       return;
     }
-
-    // 4. Past skin → katta rasmlar uchun ham tekshirish (turli turdagi xavf bo'lishi mumkin)
-    // Lekin AI quota tejash uchun: faqat ko'rinarli, katta rasmlar
-    if (aiDisabled) return;
-    if (img.naturalWidth >= 300 && img.naturalHeight >= 300) {
+    if (highSkin || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
         if (block) shieldElement(img, reason);
