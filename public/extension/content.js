@@ -22,6 +22,53 @@
   let blockedCount = 0;
   let aiDisabled = false;
 
+  // ========== NSFW LOKAL MODEL (page-context'ga inject) ==========
+  let nsfwReady = false;
+  let nsfwReqId = 0;
+  const nsfwPending = new Map();
+  function injectNsfwLoader() {
+    try {
+      const url = chrome.runtime?.getURL?.("nsfw-loader.js");
+      if (!url) return;
+      const s = document.createElement("script");
+      s.src = url;
+      s.onload = () => s.remove();
+      (document.head || document.documentElement).appendChild(s);
+    } catch {}
+  }
+  injectNsfwLoader();
+  window.addEventListener("message", (ev) => {
+    if (!ev.data || ev.source !== window) return;
+    const m = ev.data;
+    if (m.__aiRadar === "result") {
+      const cb = nsfwPending.get(m.id);
+      if (cb) { nsfwPending.delete(m.id); cb(m); }
+    }
+  });
+  window.addEventListener("ai-radar-nsfw-ready", () => { nsfwReady = true; });
+  function classifyLocal(src, timeoutMs = 6000) {
+    return new Promise((resolve) => {
+      const id = ++nsfwReqId;
+      const timer = setTimeout(() => { nsfwPending.delete(id); resolve({ error: "timeout" }); }, timeoutMs);
+      nsfwPending.set(id, (m) => { clearTimeout(timer); resolve(m); });
+      window.postMessage({ __aiRadar: "classify", id, src }, "*");
+    });
+  }
+  // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
+  function decideFromNsfw(preds) {
+    if (!preds) return null;
+    const porn = preds.Porn || 0;
+    const hentai = preds.Hentai || 0;
+    const sexy = preds.Sexy || 0;
+    const neutral = preds.Neutral || 0;
+    const drawing = preds.Drawing || 0;
+    if (porn > 0.55 || hentai > 0.55) return { block: true, reason: "Behayo kontent (lokal)", confident: true };
+    if (sexy > 0.75) return { block: true, reason: "Erotik kontent (lokal)", confident: true };
+    if (neutral > 0.85 || drawing > 0.85) return { block: false, confident: true };
+    if (porn + hentai + sexy > 0.5) return { block: false, confident: false, suspicious: true };
+    return { block: false, confident: true };
+  }
+
   // ========== CACHE (localStorage, 7 kun) ==========
   let CACHE = {};
   try {
