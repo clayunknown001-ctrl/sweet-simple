@@ -22,6 +22,53 @@
   let blockedCount = 0;
   let aiDisabled = false;
 
+  // ========== NSFW LOKAL MODEL (page-context'ga inject) ==========
+  let nsfwReady = false;
+  let nsfwReqId = 0;
+  const nsfwPending = new Map();
+  function injectNsfwLoader() {
+    try {
+      const url = chrome.runtime?.getURL?.("nsfw-loader.js");
+      if (!url) return;
+      const s = document.createElement("script");
+      s.src = url;
+      s.onload = () => s.remove();
+      (document.head || document.documentElement).appendChild(s);
+    } catch {}
+  }
+  injectNsfwLoader();
+  window.addEventListener("message", (ev) => {
+    if (!ev.data || ev.source !== window) return;
+    const m = ev.data;
+    if (m.__aiRadar === "result") {
+      const cb = nsfwPending.get(m.id);
+      if (cb) { nsfwPending.delete(m.id); cb(m); }
+    }
+  });
+  window.addEventListener("ai-radar-nsfw-ready", () => { nsfwReady = true; });
+  function classifyLocal(src, timeoutMs = 6000) {
+    return new Promise((resolve) => {
+      const id = ++nsfwReqId;
+      const timer = setTimeout(() => { nsfwPending.delete(id); resolve({ error: "timeout" }); }, timeoutMs);
+      nsfwPending.set(id, (m) => { clearTimeout(timer); resolve(m); });
+      window.postMessage({ __aiRadar: "classify", id, src }, "*");
+    });
+  }
+  // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
+  function decideFromNsfw(preds) {
+    if (!preds) return null;
+    const porn = preds.Porn || 0;
+    const hentai = preds.Hentai || 0;
+    const sexy = preds.Sexy || 0;
+    const neutral = preds.Neutral || 0;
+    const drawing = preds.Drawing || 0;
+    if (porn > 0.55 || hentai > 0.55) return { block: true, reason: "Behayo kontent (lokal)", confident: true };
+    if (sexy > 0.75) return { block: true, reason: "Erotik kontent (lokal)", confident: true };
+    if (neutral > 0.85 || drawing > 0.85) return { block: false, confident: true };
+    if (porn + hentai + sexy > 0.5) return { block: false, confident: false, suspicious: true };
+    return { block: false, confident: true };
+  }
+
   // ========== CACHE (localStorage, 7 kun) ==========
   let CACHE = {};
   try {
@@ -311,32 +358,38 @@
     // 2. Whitelist domain → AI'siz o'tkaz
     if (WHITELISTED) return;
 
-    // 3. Lokal skin-tone (tekin)
     img.classList.add("ai-radar-scanning");
+
+    // 3. LOKAL NSFW MODEL (NSFWJS) — eng aniq, tekin, cheksiz
+    if (nsfwReady) {
+      const r = await classifyLocal(url);
+      if (r && r.preds) {
+        const decision = decideFromNsfw(r.preds);
+        if (decision?.block) {
+          img.classList.remove("ai-radar-scanning");
+          shieldElement(img, decision.reason);
+          return;
+        }
+        if (decision?.confident && !decision.block) {
+          img.classList.remove("ai-radar-scanning");
+          return; // aniq xavfsiz — cloud'ga yuborilmaydi
+        }
+        // shubhali → cloud'ga o'tadi
+      }
+    }
+
+    // 4. Lokal skin-tone (NSFW yo'q bo'lsa fallback)
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    // Juda ko'p teri rangi + katta rasm → kuchli signal
-    if (!error && skinPct > 0.55 && img.naturalWidth >= 200) {
-      // Cloud AI bilan tasdiqlash (agar yoqilgan bo'lsa)
-      if (aiDisabled) {
-        // AI yo'q — local heuristic asosida blok (juda yuqori foiz)
-        if (skinPct > 0.7) {
-          shieldElement(img, "Ko'p ochiq teri (lokal)");
-        }
-        return;
-      }
-      enqueue(async () => {
-        const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason);
-      });
+    const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 200;
+
+    // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
+    if (aiDisabled) {
+      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)");
       return;
     }
-
-    // 4. Past skin → katta rasmlar uchun ham tekshirish (turli turdagi xavf bo'lishi mumkin)
-    // Lekin AI quota tejash uchun: faqat ko'rinarli, katta rasmlar
-    if (aiDisabled) return;
-    if (img.naturalWidth >= 300 && img.naturalHeight >= 300) {
+    if (highSkin || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
         if (block) shieldElement(img, reason);
