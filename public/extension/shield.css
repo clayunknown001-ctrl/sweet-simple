@@ -1,16 +1,14 @@
 .ai-radar-blocked {
-  filter: blur(45px) grayscale(1) brightness(0.4) !important;
+  filter: blur(60px) grayscale(1) brightness(0.3) !important;
   pointer-events: none !important;
+  user-select: none !important;
   transition: filter 0.1s ease !important;
-}
-.ai-radar-shield-wrap {
-  position: relative !important;
-  display: inline-block !important;
+  cursor: not-allowed !important;
 }
 .ai-radar-shield {
   position: absolute;
   inset: 0;
-  background: rgba(10, 15, 28, 0.94);
+  background: rgba(10, 15, 28, 0.97);
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -25,6 +23,8 @@
   border-radius: 6px;
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.3);
   pointer-events: auto;
+  cursor: not-allowed;
+  user-select: none;
 }
 .ai-radar-shield .icon { font-size: 26px; margin-bottom: 4px; }
 .ai-radar-shield .title {
