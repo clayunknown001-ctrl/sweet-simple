@@ -5,6 +5,83 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const reasoningLayer = `
+## NEUROPSYCHOLOGICAL REASONING (apply silently per text):
+A. DOPAMINE LOOP (Kühn & Gallinat 2014): arousal-engineered text → reward rewiring.
+B. PREFRONTAL HIJACK (Love et al 2016): lust/rage/fear-bait shuts down judgment.
+C. ALGORITHMIC EXPLOITATION: clickbait, ragebait, thirst-text designed for engagement, not user.
+D. EVOLUTIONARY: "natural" emotion ≠ "harmless". Don't conflate.
+
+## SAFE CONTEXTS (DEFAULT APPROVE — avoid false positives):
+- Normal conversation, greetings, questions, small talk
+- News, education, science, tech, business, finance, sports
+- Cooking, travel, hobbies, product descriptions
+- Code, documentation, tutorials, How-tos
+- Family/work/commerce communication
+- Mention of body parts in MEDICAL/EDUCATIONAL context (anatomy, health)
+- Mention of violence in NEWS/HISTORY context (reporting ≠ glorifying)
+- Mild romance (handholding, "I love you", wedding) is NOT sexual
+- Strong opinions, debate, criticism are NOT hate speech
+- Slang/casual language is NOT profanity unless actually vulgar
+
+## DECISION FRAMEWORK (per text):
+1. What does the text literally say? Identify topic and register.
+2. Is it engineered to provoke arousal/rage/fear, or is it informational/conversational?
+3. Would a reasonable adult find this hijacks their prefrontal cortex?
+4. YES with strong evidence → BLOCK; otherwise → APPROVE.
+`;
+
+function buildSystemPrompt(responseLang: string) {
+  return `You are a calibrated text content moderator for a real-time content radar.
+Your job: protect users from arousal-engineered, hateful, or harmful text — WITHOUT over-blocking normal content.
+
+ALL text fields (summary, block_reason, details) MUST be in ${responseLang}.
+
+${reasoningLayer}
+
+## BLOCK ONLY IF (confidence > 0.70):
+
+### EXPLICIT SEXUAL CONTENT
+- Graphic descriptions of sex acts, body parts in sexual framing
+- Erotica, sexting, dating-app sexual messages
+- Thirst-trap captions, sexual roleplay
+- DO NOT block: mild romance, "love", "kiss", educational anatomy
+
+### VULGAR PROFANITY (actual swears, not slang)
+- Real f-words, c-words, severe slurs in any language
+- DO NOT block: "damn", "hell", casual exclamations, mild slang
+
+### HATE SPEECH
+- Slurs targeting race, religion, gender, orientation
+- Dehumanizing language, calls for violence against groups
+- DO NOT block: criticism of ideas/policies/governments
+
+### THREATS & VIOLENCE GLORIFICATION
+- Direct threats, instructions for harm, gore-glorification
+- DO NOT block: news reporting, history, fiction analysis
+
+### SELF-HARM PROMOTION
+- Encouragement of suicide, self-harm methods
+- DO NOT block: mental health discussion, support resources
+
+### SCAMS / PHISHING
+- Clear fraud attempts, fake giveaways, credential theft
+
+### DRUG PROMOTION (not mention)
+- Instructions for drug preparation, encouragement of use
+- DO NOT block: news, medical, harm reduction info
+
+## CALIBRATION RULES (CRITICAL):
+- Default: APPROVE. Most text is normal.
+- Confidence > 0.70 required to block.
+- Mild/ambiguous → APPROVE (set should_block=false, confidence reflects doubt).
+- Single bad word in otherwise normal text → APPROVE unless severe slur.
+- Length matters: short normal text ("hello", "thanks", "what time?") = ALWAYS APPROVE.
+- When unsure between mild and harmful → APPROVE.
+
+Return confidence between 0 and 1. Block ONLY if confidence > 0.70.`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -17,6 +94,28 @@ serve(async (req) => {
       });
     }
 
+    // Trivial-text fast path: very short, plain text → never block (saves credits + zero false positives)
+    const trimmed = text.trim();
+    if (trimmed.length <= 3) {
+      return new Response(JSON.stringify({
+        summary: "Trivial text — auto-approved",
+        language,
+        sentiment: "neutral",
+        sentiment_score: 0,
+        topics: [],
+        word_count: trimmed.split(/\s+/).filter(Boolean).length,
+        reading_time_minutes: 0,
+        content_type: "trivial",
+        tone: "neutral",
+        key_entities: [],
+        harmful_content: { is_harmful: false, severity: "none", categories: [], details: "", flagged_phrases: [] },
+        should_block: false,
+        block_reason: "",
+        confidence: 1,
+        _fast_path: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const langMap: Record<string, string> = {
       en: "English",
       uz: "O'zbek tilida (Uzbek)",
@@ -25,165 +124,143 @@ serve(async (req) => {
     const responseLang = langMap[language] || "English";
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) throw new Error("No AI provider configured");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
+    const systemPrompt = buildSystemPrompt(responseLang);
+    const schema = {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        language: { type: "string" },
+        sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
+        sentiment_score: { type: "number" },
+        topics: { type: "array", items: { type: "string" } },
+        word_count: { type: "number" },
+        reading_time_minutes: { type: "number" },
+        content_type: { type: "string" },
+        tone: { type: "string" },
+        key_entities: { type: "array", items: { type: "string" } },
+        harmful_content: {
+          type: "object",
+          properties: {
+            is_harmful: { type: "boolean" },
+            severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
+            categories: { type: "array", items: { type: "string" } },
+            details: { type: "string" },
+            flagged_phrases: { type: "array", items: { type: "string" } },
+          },
+          required: ["is_harmful", "severity", "categories", "details", "flagged_phrases"],
+        },
+        should_block: { type: "boolean" },
+        block_reason: { type: "string" },
+        confidence: { type: "number" },
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          {
-            role: "system",
-            content: `You are the MOST STRICT content moderation AI in the world, with deep understanding of human neuropsychology. You protect users — especially young people — from ALL inappropriate, harmful, and morally corrupting text content on the internet.
+      required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities", "harmful_content", "should_block", "block_reason", "confidence"],
+    };
 
-Your task: Analyze the text and determine if it should be BLOCKED or APPROVED.
-
-ALL text fields in your response MUST be in ${responseLang}.
-
-## BEHAVIORAL REASONING LAYER (How Human Feelings Work)
-Based on peer-reviewed research (Kühn & Gallinat 2014, Love et al. 2016, PMC7328032, Darwin's emotion theory):
-
-1. DOPAMINE & REWARD: Sexually-charged or emotionally-manipulative text triggers dopamine. Repeated exposure rewires reward pathways → addiction-like patterns.
-2. PREFRONTAL HIJACK: Lust, rage, fear shut down rational judgment. Text engineered to provoke these emotions hijacks user's free will.
-3. DESENSITIZATION: Repeated exposure to objectifying or harmful text normalizes it — damaging empathy, relationships, self-image.
-4. EVOLUTIONARY SIGNALS: Emotions evolved as survival signals. Modern content WEAPONIZES lust, outrage, and fear to capture attention.
-5. COMPULSION LOOPS: Even single exposure can trigger craving cycles in vulnerable users.
-
-REASONING for EVERY text:
-Step 1: What does the text literally say?
-Step 2: What EMOTION is it engineered to provoke? (lust, rage, fear, curiosity, calm, joy)
-Step 3: Does this emotion serve the user's wellbeing or hijack their brain?
-Step 4: Decide — APPROVE only if it clearly serves user wellbeing.
-
-## ABSOLUTE BLOCKING CRITERIA — Block (should_block: true) if ANY of the following:
-
-### 1. PROFANITY & VULGAR LANGUAGE (ZERO TOLERANCE)
-- ANY swear words in ANY language (English, Russian, Uzbek, Turkish, Arabic, Spanish, etc.)
-- Vulgar slang, crude expressions
-- Masked/censored profanity (f***, sh**, etc.)
-- Internet slang for profanity
-
-### 2. SEXUAL CONTENT (ZERO TOLERANCE)
-- ANY sexually suggestive text, even mildly flirtatious
-- Sexual descriptions, innuendo, double meanings
-- Romantic/erotic content, love scenes
-- Dating app style messages with sexual undertones
-- References to sexual acts, body parts in sexual context
-- "Sexy", "hot" used to describe people
-- Text engineered to provoke arousal/lust (Step-2 emotion = lust → BLOCK)
-
-### 3. HATE SPEECH & DISCRIMINATION
-- Racism, xenophobia, homophobia, sexism
-- Slurs targeting any group
-- Dehumanizing language
-- Bullying, harassment, intimidation
-
-### 4. VIOLENCE & THREATS
-- Threats of violence or harm
-- Glorification of violence
-- Detailed descriptions of violent acts
-- Encouragement of self-harm or suicide
-
-### 5. DRUGS & SUBSTANCE ABUSE
-- References to drug use or promotion
-- Alcohol glorification
-- Instructions for drug preparation
-
-### 6. SCAMS & DECEPTION
-- Phishing attempts
-- Fraudulent content
-- Misleading health/financial claims
-
-### 7. CODED LANGUAGE & BYPASS ATTEMPTS
-- Slang or coded words used to bypass filters
-- Leetspeak profanity (pr0n, b00bs, etc.)
-- Abbreviations for inappropriate terms
-- Emoji combinations with sexual/drug meanings
-
-## DECISION RULE:
-- Apply the 4-step reasoning before every decision
-- If text is engineered to hijack the user's brain (lust, rage, fear-bait) → BLOCK
-- If there is even a 10% chance the text is inappropriate → BLOCK IT
-- When in doubt → ALWAYS BLOCK
-- Only mark safe if the text serves user wellbeing (educational, informational, family-friendly)`,
-          },
-          { role: "user", content: text },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "return_analysis",
-              description: "Return the text analysis results with content moderation",
-              parameters: {
-                type: "object",
-                properties: {
-                  summary: { type: "string" },
-                  language: { type: "string" },
-                  sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
-                  sentiment_score: { type: "number" },
-                  topics: { type: "array", items: { type: "string" } },
-                  word_count: { type: "number" },
-                  reading_time_minutes: { type: "number" },
-                  content_type: { type: "string" },
-                  tone: { type: "string" },
-                  key_entities: { type: "array", items: { type: "string" } },
-                  harmful_content: {
-                    type: "object",
-                    properties: {
-                      is_harmful: { type: "boolean" },
-                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" } },
-                      details: { type: "string" },
-                      flagged_phrases: { type: "array", items: { type: "string" } },
-                    },
-                    required: ["is_harmful", "severity", "categories", "details", "flagged_phrases"],
-                    additionalProperties: false,
-                  },
-                  should_block: { type: "boolean", description: "true if content should be blocked — be EXTREMELY strict" },
-                  block_reason: { type: "string", description: "Human-readable reason for blocking, empty if not blocked" },
-                },
-                required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities", "harmful_content", "should_block", "block_reason"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "return_analysis" } },
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    async function callGoogle() {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text }] }],
+          tools: [{ functionDeclarations: [{ name: "return_analysis", description: "Return moderation", parameters: schema }] }],
+          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["return_analysis"] } },
+        }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        const e: any = new Error(`Google ${r.status}: ${t}`); e.status = r.status; throw e;
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI error:", response.status, t);
-      throw new Error("AI gateway error");
+      const d = await r.json();
+      const parts = d?.candidates?.[0]?.content?.parts || [];
+      for (const p of parts) if (p.functionCall?.args) return p.functionCall.args;
+      throw new Error("Google: no function call");
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall) {
-      const analysis = JSON.parse(toolCall.function.arguments);
-      return new Response(JSON.stringify(analysis), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    async function callLovable() {
+      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: text },
+          ],
+          tools: [{
+            type: "function",
+            function: { name: "return_analysis", description: "Return calibrated text moderation decision", parameters: schema },
+          }],
+          tool_choice: { type: "function", function: { name: "return_analysis" } },
+        }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        const e: any = new Error(`Lovable ${r.status}: ${t}`); e.status = r.status; throw e;
+      }
+      const d = await r.json();
+      const tc = d.choices?.[0]?.message?.tool_calls?.[0];
+      if (tc) return JSON.parse(tc.function.arguments);
+      return JSON.parse(d.choices?.[0]?.message?.content);
+    }
+
+    let analysis: any = null;
+    let providerUsed = "none";
+    let firstError: any = null;
+
+    if (GEMINI_API_KEY) {
+      try {
+        analysis = await callGoogle();
+        providerUsed = "google-ai-studio";
+        console.log("✅ Text: Google AI Studio (FREE)");
+      } catch (e: any) {
+        firstError = e;
+        console.warn("⚠️ Google failed:", e?.message);
+      }
+    }
+
+    if (!analysis && LOVABLE_API_KEY) {
+      try {
+        analysis = await callLovable();
+        providerUsed = "lovable-gateway";
+        console.log("✅ Text: Lovable Gateway (paid)");
+      } catch (e: any) {
+        if (e?.status === 429) {
+          return new Response(JSON.stringify({ error: "Rate limit exceeded." }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (e?.status === 402) {
+          return new Response(JSON.stringify({ error: "Both AI providers exhausted." }), {
+            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (!firstError) firstError = e;
+      }
+    }
+
+    if (!analysis) {
+      const msg = firstError?.message || "All AI providers failed";
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const content = data.choices?.[0]?.message?.content;
-    return new Response(JSON.stringify(JSON.parse(content)), {
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
+    if (analysis.should_block && conf < 0.70) {
+      analysis.should_block = false;
+      analysis.block_reason = "Low confidence — approved by calibration gate";
+      if (analysis.harmful_content) {
+        analysis.harmful_content.is_harmful = false;
+        analysis.harmful_content.severity = "none";
+      }
+    }
+
+    return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
