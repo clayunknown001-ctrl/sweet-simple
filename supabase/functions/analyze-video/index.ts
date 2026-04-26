@@ -288,6 +288,13 @@ serve(async (req) => {
       });
     }
 
+    // Confidence-gated blocking — protects against false positives
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
+    if (analysis.should_block && conf < 0.65) {
+      analysis.should_block = false;
+      analysis.block_reason = "Low confidence — approved";
+    }
+
     return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
