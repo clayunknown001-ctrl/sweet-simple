@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<title>AI Radar</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f172a; color: #fff;
+    font-family: system-ui, -apple-system, sans-serif; user-select: none; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 32px; }
+  .icon { font-size: 96px; margin-bottom: 16px; }
+  h1 { font-size: 36px; color: #ef4444; margin: 0 0 12px; }
+  p { font-size: 18px; color: #94a3b8; max-width: 600px; line-height: 1.5; }
+  .timer { margin-top: 32px; color: #475569; font-size: 14px; }
+  button { margin-top: 24px; padding: 12px 28px; background: #1e293b; color: #fff;
+    border: 1px solid #334155; border-radius: 8px; font-size: 16px; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="icon">🛡️</div>
+  <h1>AI Radar bloklandi</h1>
+  <p id="reason">Zararli yoki diqqatni chalg‘ituvchi kontent aniqlandi.</p>
+  <div class="timer" id="timer">10 soniyadan keyin yopish mumkin...</div>
+  <button id="close" disabled>Yopish</button>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const reason = params.get("reason");
+  if (reason) document.getElementById("reason").textContent = decodeURIComponent(reason);
+  let left = 10;
+  const timer = document.getElementById("timer");
+  const btn = document.getElementById("close");
+  const iv = setInterval(() => {
+    left--;
+    timer.textContent = left + " soniya qoldi...";
+    if (left <= 0) {
+      clearInterval(iv);
+      timer.textContent = "Yopish mumkin";
+      btn.disabled = false;
+    }
+  }, 1000);
+  btn.onclick = () => window.close();
+</script>
+</body>
+</html>
