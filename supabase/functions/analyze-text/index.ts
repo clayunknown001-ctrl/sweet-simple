@@ -183,89 +183,73 @@ serve(async (req) => {
 
     async function callLovable() {
       const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: buildSystemPrompt(responseLang) },
-          { role: "user", content: text },
-        ],
-        tools: [
-          {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: text },
+          ],
+          tools: [{
             type: "function",
-            function: {
-              name: "return_analysis",
-              description: "Return calibrated text moderation decision",
-              parameters: {
-                type: "object",
-                properties: {
-                  summary: { type: "string" },
-                  language: { type: "string" },
-                  sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
-                  sentiment_score: { type: "number" },
-                  topics: { type: "array", items: { type: "string" } },
-                  word_count: { type: "number" },
-                  reading_time_minutes: { type: "number" },
-                  content_type: { type: "string" },
-                  tone: { type: "string" },
-                  key_entities: { type: "array", items: { type: "string" } },
-                  harmful_content: {
-                    type: "object",
-                    properties: {
-                      is_harmful: { type: "boolean" },
-                      severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
-                      categories: { type: "array", items: { type: "string" } },
-                      details: { type: "string" },
-                      flagged_phrases: { type: "array", items: { type: "string" } },
-                    },
-                    required: ["is_harmful", "severity", "categories", "details", "flagged_phrases"],
-                    additionalProperties: false,
-                  },
-                  should_block: { type: "boolean", description: "true ONLY if confidence > 0.70 and clear harm exists" },
-                  block_reason: { type: "string", description: "Reason for blocking, empty if approved" },
-                  confidence: { type: "number", description: "0-1 confidence in the decision" },
-                },
-                required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities", "harmful_content", "should_block", "block_reason", "confidence"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "return_analysis" } },
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+            function: { name: "return_analysis", description: "Return calibrated text moderation decision", parameters: schema },
+          }],
+          tool_choice: { type: "function", function: { name: "return_analysis" } },
+        }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        const e: any = new Error(`Lovable ${r.status}: ${t}`); e.status = r.status; throw e;
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI error:", response.status, t);
-      throw new Error("AI gateway error");
+      const d = await r.json();
+      const tc = d.choices?.[0]?.message?.tool_calls?.[0];
+      if (tc) return JSON.parse(tc.function.arguments);
+      return JSON.parse(d.choices?.[0]?.message?.content);
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    let analysis: any;
-    if (toolCall) {
-      analysis = JSON.parse(toolCall.function.arguments);
-    } else {
-      const content = data.choices?.[0]?.message?.content;
-      analysis = JSON.parse(content);
+    let analysis: any = null;
+    let providerUsed = "none";
+    let firstError: any = null;
+
+    if (GEMINI_API_KEY) {
+      try {
+        analysis = await callGoogle();
+        providerUsed = "google-ai-studio";
+        console.log("✅ Text: Google AI Studio (FREE)");
+      } catch (e: any) {
+        firstError = e;
+        console.warn("⚠️ Google failed:", e?.message);
+      }
     }
 
-    // Confidence gate — protect against false positives
+    if (!analysis && LOVABLE_API_KEY) {
+      try {
+        analysis = await callLovable();
+        providerUsed = "lovable-gateway";
+        console.log("✅ Text: Lovable Gateway (paid)");
+      } catch (e: any) {
+        if (e?.status === 429) {
+          return new Response(JSON.stringify({ error: "Rate limit exceeded." }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (e?.status === 402) {
+          return new Response(JSON.stringify({ error: "Both AI providers exhausted." }), {
+            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (!firstError) firstError = e;
+      }
+    }
+
+    if (!analysis) {
+      const msg = firstError?.message || "All AI providers failed";
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
     if (analysis.should_block && conf < 0.70) {
       analysis.should_block = false;
@@ -276,7 +260,7 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify(analysis), {
+    return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
