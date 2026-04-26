@@ -235,7 +235,9 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = fast ? "Quickly judge every frame: BLOCK or SAFE?" : "Analyze this video. Check EVERY frame. Be EXTREMELY strict.";
+    const userText = fast
+      ? "Apply calibration. Default APPROVE for normal/clothed/non-arousal-framed content. Only BLOCK with confidence>0.65 when arousal/harm triggers are clearly present in the frames."
+      : "Apply the per-frame framework. Default APPROVE; block only with strong evidence (confidence > 0.65).";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
