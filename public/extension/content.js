@@ -62,10 +62,11 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    if (porn > 0.55 || hentai > 0.55) return { block: true, reason: "Behayo kontent (lokal)", confident: true };
-    if (sexy > 0.75) return { block: true, reason: "Erotik kontent (lokal)", confident: true };
-    if (neutral > 0.85 || drawing > 0.85) return { block: false, confident: true };
-    if (porn + hentai + sexy > 0.5) return { block: false, confident: false, suspicious: true };
+    // v1.2: false-positive kamaytirish — chegaralar biroz qattiqroq, oraliq cloud'ga
+    if (porn > 0.65 || hentai > 0.65) return { block: true, reason: "Behayo kontent (lokal)", confident: true };
+    if (sexy > 0.85) return { block: true, reason: "Erotik kontent (lokal)", confident: true };
+    if (neutral > 0.75 || drawing > 0.80) return { block: false, confident: true };
+    if (porn + hentai + sexy > 0.55) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: true };
   }
 
