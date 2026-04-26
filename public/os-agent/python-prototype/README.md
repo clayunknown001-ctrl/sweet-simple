@@ -1,41 +1,57 @@
-# AI Radar — OS Agent (Python prototip)
+# AI Radar — OS Agent (Python prototip v2)
 
-MVP uchun tezkor prototip. Windows/Linux/macOS'da ishlaydi.
+MVP+ uchun. Windows/Linux/macOS'da ishlaydi.
 
 ## O'rnatish
 
 ```bash
-pip install pillow mss requests
+pip install pillow mss requests opennsfw2 psutil pygetwindow
+# Windows uchun qo'shimcha:
+pip install pywin32
 python agent.py
 ```
 
-## Nima qiladi
+## Yangi v2 xususiyatlari
 
-1. Har **3 soniyada** birlamchi monitor screenshot oladi.
-2. Rasmni 768px gacha kichraytiradi (bandwidth tejash).
-3. Lovable Cloud `analyze-image` API'siga yuboradi.
-4. `should_block: true` bo'lsa — to'liq ekranli qora overlay ko'rsatib, 10s kuttiradi.
+1. **Lokal NSFW filter** (`opennsfw2`, ONNX MobileNet, ~5MB):
+   - Score > 0.85 → darhol blok (cloud kerak emas)
+   - Score < 0.20 → xavfsiz (cloud kerak emas)
+   - 0.20..0.85 → cloud AI'ga yuboriladi (faqat shubhalilar)
+   - **Natija: cloud chaqiriqlari ~95% kamayadi**
+
+2. **Per-app whitelist** — xavfsiz dasturlarda umuman tekshirilmaydi:
+   - VSCode, Cursor, Lovable, Terminal, PowerShell, bash
+   - Figma, File Explorer, Notepad, Gedit
+   - Real vaqtda `psutil + win32gui` orqali aniqlanadi
+
+3. **Diff detection** — ekran perceptual hash (16x16) bilan taqqoslanadi:
+   - O'zgarmagan bo'lsa → tekshirmaslik
+   - Statik sahifalarda 90%+ tejash
+
+4. **Statistika** — har 50 iteratsiyada chiqadi:
+   ```
+   [STATS] cloud=12, lokal_blok=3, diff=78, whitelist=45 → kvota tejash: 91%
+   ```
 
 ## Konfiguratsiya
 
 `agent.py` ichida:
-- `INTERVAL_SEC` — tekshirish chastotasi (default 3s)
-- `MAX_DIM` — yuborish oldidan downscale o'lchami (default 768px)
-- `LANG` — `uz`/`ru`/`en`
+- `INTERVAL_SEC` — chastota (default 3s)
+- `LOCAL_NSFW_BLOCK` / `LOCAL_NSFW_SAFE` — lokal model chegaralari
+- `WHITELIST_APPS` — xavfsiz dasturlar ro'yxati
 
-## Keyingi qadam: Tauri/Rust portatsiyasi
+## Logika diagrammasi
 
-Python prototipi MVP uchun. Productionda **Tauri (Rust)** tavsiya etiladi:
-- 5MB binary (Python+deps 100MB+)
-- 50MB RAM (Python ~150MB)
-- System tray ikonka
-- Auto-start on boot
-- Native overlay (tezroq Tkinter'dan)
+```
+Screenshot (3s)
+    │
+    ├── Whitelist app? ──► skip
+    ├── Diff = oldingi? ──► skip
+    ├── Lokal NSFW > 0.85? ──► BLOK (overlay)
+    ├── Lokal NSFW < 0.20? ──► safe
+    └── Oraliq → Cloud AI ──► Block/Allow
+```
 
-`../tauri-skeleton/` papkasiga qarang.
+## Keyingi qadam: Tauri/Rust
 
-## Kvota optimizatsiyasi
-
-Lokal NSFW model (NSFWJS Python porti yoki ONNX MobileNet) qo'shilsa,
-cloud chaqiriqlari 95% kamayadi. Hozircha har screenshot cloud'ga ketadi —
-faqat MVP uchun.
+Productionda `../tauri-skeleton/` — 5MB binary, 50MB RAM, system tray, auto-start.
