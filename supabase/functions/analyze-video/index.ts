@@ -6,28 +6,56 @@ const corsHeaders = {
 };
 
 const reasoningLayer = `
-## BEHAVIORAL REASONING LAYER (Neuroscience):
-1. DOPAMINE LOOP (Kühn & Gallinat 2014): video > images for addiction → BLOCK arousal-engineered video.
-2. PREFRONTAL SHUTDOWN: motion+sound hijacks judgment → BLOCK before brain is hijacked.
-3. ALGORITHMIC WEAPONIZATION: counter the algorithm exploiting primal drives.
-4. COMPULSION (Love et al. 2016): 3 sec arousing video = craving cycle. ANY bad frame = BLOCK ALL.
-5. EVOLUTIONARY: lust ≠ wellbeing.
+## NEUROPSYCHOLOGICAL REASONING (apply silently):
+A. DOPAMINE LOOP (Kühn & Gallinat 2014): motion video amplifies arousal → striatum shrinkage → block engineered-for-arousal video.
+B. PREFRONTAL HIJACK (PMC7328032, Love et al 2016): motion+sound shuts down judgment in <200ms; block BEFORE the hijack.
+C. ALGORITHMIC EXPLOITATION: TikTok/Instagram/YT-Shorts reels are tuned for arousal — thirst-trap framing, hip emphasis, mirror dances, lip+eye-contact, slow-pan over body. Block even when "no nudity".
+D. EVOLUTIONARY: sexual selection ≠ human flourishing. Don't conflate "natural" with "harmless".
 
-REASONING: frames → emotion engineered → serves user or hijacks → APPROVE/BLOCK. 1% doubt = BLOCK.
+E. SAFE CONTEXTS (avoid false positives — APPROVE):
+   - Cars, food, animals, nature, architecture, tech demos, charts, tutorials
+   - News anchors, educational lectures, sports broadcasts (non-arousal-framed)
+   - Fully-clothed people in normal commerce/family/work context
+   - Cooking, travel vlogs (non-body-focused), music videos (no suggestive choreo)
+
+## DECISION FRAMEWORK (per-frame, then aggregate):
+1. Identify the literal scene (objects, people, clothing, action, setting).
+2. Is the framing engineered for arousal? (slow pan over body, hip/cleavage emphasis, mirror selfie, lip emphasis, suggestive choreo)
+3. Is the context legitimate (commerce, news, education, sports, family, art)?
+4. Would this hijack the viewer's prefrontal cortex? YES → BLOCK; NO → APPROVE.
+
+## AROUSAL TRIGGERS (BLOCK with confidence > 0.65):
+- Bikini, lingerie, underwear, swimsuit (any context)
+- Cleavage / midriff emphasis, exposed thighs in non-sport context
+- See-through, body-hugging fabric outside fitness drills
+- Mirror selfie + minimal/tight clothing
+- Twerking, grinding, hip-thrusting, seductive choreography
+- Thirst-trap reels (camera lingers on body, not activity)
+- Lip emphasis + eye-contact + suggestive pose
+- "Art" nudity (same brain effect — still BLOCK)
+- Fitness videos where camera focuses on body, not technique
+
+## OTHER HARM (BLOCK):
+- Blood, gore, wounds, corpses
+- Weapons in active/threatening use
+- Drug use, paraphernalia
+- Hate symbols (swastika, etc.)
+- Self-harm, suicide imagery
+- Horror/disturbing imagery
+- Sexual or profane on-screen text
+
+CALIBRATION: Default APPROVE. Only block when arousal/harm triggers are clearly present. Confidence > 0.65 required.
 `;
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
+  const common = `You are a real-time video content moderator for a browser/OS radar protecting users from arousal-engineered and harmful content.
+Response language for block_reason: ${responseLang}.
+${reasoningLayer}
+Return confidence between 0 and 1. Only block if confidence > 0.65.`;
+
   return fast
-    ? `Real-time video moderator (radar) with neuropsychology. Response in ${responseLang}.
-${reasoningLayer}
-BLOCK if ANY frame: nudity, bikinis, lingerie, underwear, shirtless, suggestive poses/movements, intimate touching, kissing, bed scenes, tight/sheer clothing, cleavage, midriff, exposed thighs, twerking/grinding/provocative dance, thirst-trap reels, violence, blood, weapons, gore, drugs, hate symbols, horror, self-harm, sexual/profane on-screen text.
-SAFE only: nature, food, animals (unharmed), objects, architecture, tech, fully-clothed non-suggestive people, education, tutorials.
-ANY single bad frame = BLOCK entire video.`
-    : `MOST EXTREME video moderator. Response in ${responseLang}.
-${reasoningLayer}
-BLOCK if ANY frame: nudity, bikinis, suggestive content, intimate contact, sexual dance, violence, blood, drugs, hate, disturbing, arousal-engineered framing.
-SAFE only: nature, food, animals, objects, architecture, tech, fully-clothed non-suggestive content.
-1% doubt = BLOCK.`;
+    ? `${common}\nQuickly judge: do ANY frames contain a clear arousal trigger or harm category? Default APPROVE.`
+    : `${common}\nApply the full per-frame framework. Aggregate before deciding.`;
 }
 
 const fastParams = {
