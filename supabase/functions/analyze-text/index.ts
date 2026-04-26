@@ -124,9 +124,65 @@ serve(async (req) => {
     const responseLang = langMap[language] || "English";
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) throw new Error("No AI provider configured");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const systemPrompt = buildSystemPrompt(responseLang);
+    const schema = {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        language: { type: "string" },
+        sentiment: { type: "string", enum: ["positive", "negative", "neutral", "mixed"] },
+        sentiment_score: { type: "number" },
+        topics: { type: "array", items: { type: "string" } },
+        word_count: { type: "number" },
+        reading_time_minutes: { type: "number" },
+        content_type: { type: "string" },
+        tone: { type: "string" },
+        key_entities: { type: "array", items: { type: "string" } },
+        harmful_content: {
+          type: "object",
+          properties: {
+            is_harmful: { type: "boolean" },
+            severity: { type: "string", enum: ["none", "low", "medium", "high", "critical"] },
+            categories: { type: "array", items: { type: "string" } },
+            details: { type: "string" },
+            flagged_phrases: { type: "array", items: { type: "string" } },
+          },
+          required: ["is_harmful", "severity", "categories", "details", "flagged_phrases"],
+        },
+        should_block: { type: "boolean" },
+        block_reason: { type: "string" },
+        confidence: { type: "number" },
+      },
+      required: ["summary", "language", "sentiment", "sentiment_score", "topics", "word_count", "reading_time_minutes", "content_type", "tone", "key_entities", "harmful_content", "should_block", "block_reason", "confidence"],
+    };
+
+    async function callGoogle() {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text }] }],
+          tools: [{ functionDeclarations: [{ name: "return_analysis", description: "Return moderation", parameters: schema }] }],
+          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["return_analysis"] } },
+        }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        const e: any = new Error(`Google ${r.status}: ${t}`); e.status = r.status; throw e;
+      }
+      const d = await r.json();
+      const parts = d?.candidates?.[0]?.content?.parts || [];
+      for (const p of parts) if (p.functionCall?.args) return p.functionCall.args;
+      throw new Error("Google: no function call");
+    }
+
+    async function callLovable() {
+      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
