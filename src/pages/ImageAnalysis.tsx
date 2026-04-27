@@ -28,6 +28,9 @@ interface ImageResult {
   contains_people: boolean;
   estimated_people_count: number;
   harmful_content: HarmfulContent;
+  should_block?: boolean;
+  block_reason?: string;
+  _provider?: string;
 }
 
 const languages = [
