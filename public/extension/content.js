@@ -55,6 +55,7 @@
     });
   }
   // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
+  // v1.3: balanced — Porn/Hentai aniq blok, Sexy faqat juda yuqori, Neutral keng o'tkaziladi
   function decideFromNsfw(preds) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -62,11 +63,10 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    // v1.2: false-positive kamaytirish — chegaralar biroz qattiqroq, oraliq cloud'ga
-    if (porn > 0.65 || hentai > 0.65) return { block: true, reason: "Behayo kontent (lokal)", confident: true };
-    if (sexy > 0.85) return { block: true, reason: "Erotik kontent (lokal)", confident: true };
-    if (neutral > 0.75 || drawing > 0.80) return { block: false, confident: true };
-    if (porn + hentai + sexy > 0.55) return { block: false, confident: false, suspicious: true };
+    if (porn > 0.60 || hentai > 0.60) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (sexy > 0.88 && neutral < 0.15) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
+    if (neutral > 0.70 || drawing > 0.75) return { block: false, confident: true };
+    if (porn + hentai > 0.45) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: true };
   }
 
