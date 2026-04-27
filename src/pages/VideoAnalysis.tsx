@@ -33,6 +33,9 @@ interface VideoResult {
   tags: string[];
   quality: string;
   harmful_content: HarmfulContent;
+  should_block?: boolean;
+  block_reason?: string;
+  _provider?: string;
 }
 
 const languages = [
