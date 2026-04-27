@@ -372,6 +372,7 @@
 
   // ========== Scanners ==========
   async function processImage(img) {
+    if (paused) return;
     if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
     const url = img.currentSrc || img.src;
     if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
@@ -382,7 +383,7 @@
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
-    if (local.block) { shieldElement(img, local.reason); return; }
+    if (local.block) { shieldElement(img, local.reason, "local"); return; }
 
     // 2. Whitelist domain → AI'siz o'tkaz
     if (WHITELISTED) return;
@@ -396,11 +397,12 @@
         const decision = decideFromNsfw(r.preds);
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
-          shieldElement(img, decision.reason);
+          shieldElement(img, decision.reason, "local");
           return;
         }
         if (decision?.confident && !decision.block) {
           img.classList.remove("ai-radar-scanning");
+          noteLocalApproved();
           return; // aniq xavfsiz — cloud'ga yuborilmaydi
         }
         // shubhali → cloud'ga o'tadi
@@ -415,13 +417,13 @@
 
     // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
     if (aiDisabled) {
-      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)");
+      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
       return;
     }
     if (highSkin || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason);
+        if (block) shieldElement(img, reason, "cloud");
       });
     }
   }
