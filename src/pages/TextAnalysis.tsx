@@ -30,6 +30,7 @@ interface TextResult {
   harmful_content: HarmfulContent;
   should_block: boolean;
   block_reason: string;
+  _provider?: string;
 }
 
 const langs = [
