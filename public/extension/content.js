@@ -21,6 +21,29 @@
   let active = 0;
   let blockedCount = 0;
   let aiDisabled = false;
+  let paused = false;
+
+  // Persisted stats (chrome.storage.local)
+  const stats = { totalBlocked: 0, localBlocked: 0, cloudBlocked: 0, localApproved: 0 };
+  try {
+    chrome.storage?.local?.get?.(["totalBlocked","localBlocked","cloudBlocked","localApproved","paused"], (s) => {
+      if (!s) return;
+      stats.totalBlocked = s.totalBlocked || 0;
+      stats.localBlocked = s.localBlocked || 0;
+      stats.cloudBlocked = s.cloudBlocked || 0;
+      stats.localApproved = s.localApproved || 0;
+      paused = !!s.paused;
+      blockedCount = stats.totalBlocked;
+    });
+    chrome.storage?.onChanged?.addListener?.((changes, area) => {
+      if (area === "local" && changes.paused) paused = !!changes.paused.newValue;
+    });
+  } catch {}
+
+  function persistStats(extra = {}) {
+    try { chrome.storage?.local?.set?.({ ...stats, ...extra }); } catch {}
+  }
+  function noteLocalApproved() { stats.localApproved++; persistStats(); }
 
   // ========== NSFW LOKAL MODEL (page-context'ga inject) ==========
   let nsfwReady = false;
@@ -192,10 +215,15 @@
   // 1x1 transparent PNG
   const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-  function shieldElement(el, reason) {
+  function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
     blockedCount++;
+    stats.totalBlocked = blockedCount;
+    if (source === "cloud") stats.cloudBlocked++;
+    else stats.localBlocked++;
+    const lastBlock = { reason: reason || "", host: location.hostname, ts: Date.now() };
+    persistStats({ lastBlock });
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
 
     if (el.tagName === "IMG") {
@@ -344,6 +372,7 @@
 
   // ========== Scanners ==========
   async function processImage(img) {
+    if (paused) return;
     if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
     const url = img.currentSrc || img.src;
     if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
@@ -354,7 +383,7 @@
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
-    if (local.block) { shieldElement(img, local.reason); return; }
+    if (local.block) { shieldElement(img, local.reason, "local"); return; }
 
     // 2. Whitelist domain → AI'siz o'tkaz
     if (WHITELISTED) return;
@@ -368,11 +397,12 @@
         const decision = decideFromNsfw(r.preds);
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
-          shieldElement(img, decision.reason);
+          shieldElement(img, decision.reason, "local");
           return;
         }
         if (decision?.confident && !decision.block) {
           img.classList.remove("ai-radar-scanning");
+          noteLocalApproved();
           return; // aniq xavfsiz — cloud'ga yuborilmaydi
         }
         // shubhali → cloud'ga o'tadi
@@ -387,22 +417,23 @@
 
     // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
     if (aiDisabled) {
-      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)");
+      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
       return;
     }
     if (highSkin || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason);
+        if (block) shieldElement(img, reason, "cloud");
       });
     }
   }
 
   function processVideo(video) {
+    if (paused) return;
     if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
     const poster = video.poster;
     const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
-    if (local.block) { shieldElement(video, local.reason); return; }
+    if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
     if (aiDisabled) return;
 
@@ -410,7 +441,7 @@
     if (poster && !poster.startsWith("data:")) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
-        if (block) shieldElement(video, reason);
+        if (block) shieldElement(video, reason, "cloud");
       });
     } else {
       enqueue(() => captureFrame(video));
@@ -425,6 +456,7 @@
   }
 
   async function captureFrame(video) {
+    if (paused) return;
     if (video.readyState < 2) {
       video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
       return;
@@ -458,8 +490,8 @@
           const r = await classifyLocal(dataUrl, 4000);
           if (r && r.preds) {
             const decision = decideFromNsfw(r.preds);
-            if (decision?.block) { shieldElement(video, decision.reason); return; }
-            if (decision?.confident && !decision.block) continue;
+            if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
+            if (decision?.confident && !decision.block) { noteLocalApproved(); continue; }
           }
         }
 
@@ -467,7 +499,7 @@
         if (aiDisabled) continue;
         const b64 = dataUrl.split(",")[1];
         const { block, reason } = await analyzeBase64(b64);
-        if (block) { shieldElement(video, reason); return; }
+        if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
   }
