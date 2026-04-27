@@ -215,10 +215,15 @@
   // 1x1 transparent PNG
   const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-  function shieldElement(el, reason) {
+  function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
     blockedCount++;
+    stats.totalBlocked = blockedCount;
+    if (source === "cloud") stats.cloudBlocked++;
+    else stats.localBlocked++;
+    const lastBlock = { reason: reason || "", host: location.hostname, ts: Date.now() };
+    persistStats({ lastBlock });
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
 
     if (el.tagName === "IMG") {
