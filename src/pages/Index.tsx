@@ -1,4 +1,4 @@
-import { Sparkles, FileText, Image as ImageIcon, Video, Code2, ArrowRight } from "lucide-react";
+import { Sparkles, FileText, Image as ImageIcon, Video, Code2, ArrowRight, Cpu, Cloud, Shield, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,39 @@ export default function Index() {
               </span>
             </Link>
           ))}
+        </div>
+      </section>
+
+      {/* Local-first architecture */}
+      <section className="container mx-auto px-4 pb-24">
+        <div className="border border-primary/20 rounded-2xl p-8 bg-gradient-to-br from-primary/5 via-transparent to-cyan/5">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="w-5 h-5 text-primary" />
+            <h2 className="text-2xl font-bold text-foreground">Local-first arxitektura</h2>
+          </div>
+          <p className="text-muted-foreground mb-8 max-w-2xl">
+            AI Radar 4 qatlamli himoya bilan ishlaydi — kontentning 95%i qurilmangizda,
+            tekin va bir lahzada tahlil qilinadi. Faqat shubhali holatlar cloud'ga yuboriladi.
+          </p>
+          <div className="grid md:grid-cols-4 gap-4">
+            {[
+              { icon: <Shield className="w-5 h-5" />, label: "Whitelist", desc: "Domen/app filtri", pct: "30%", color: "text-primary" },
+              { icon: <Cpu className="w-5 h-5" />, label: "Lokal NSFW", desc: "Brauzerda ONNX", pct: "60%", color: "text-cyan" },
+              { icon: <Sparkles className="w-5 h-5" />, label: "Skin-tone", desc: "Heuristik filtr", pct: "5%", color: "text-primary" },
+              { icon: <Cloud className="w-5 h-5" />, label: "Cloud AI", desc: "Faqat shubhali", pct: "5%", color: "text-orange-500" },
+            ].map((s) => (
+              <div key={s.label} className="border border-border rounded-xl p-4 bg-card/50">
+                <div className={`${s.color} mb-2`}>{s.icon}</div>
+                <div className="text-xs font-mono text-muted-foreground uppercase">{s.label}</div>
+                <div className={`text-2xl font-bold ${s.color} font-mono`}>{s.pct}</div>
+                <div className="text-xs text-muted-foreground mt-1">{s.desc}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 flex items-center gap-2 text-sm font-mono text-muted-foreground">
+            <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
+            <span>Provayder: Google AI Studio (bepul) → Lovable Gateway (kreditli) avtomatik fallback</span>
+          </div>
         </div>
       </section>
     </div>

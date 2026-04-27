@@ -33,6 +33,9 @@ interface VideoResult {
   tags: string[];
   quality: string;
   harmful_content: HarmfulContent;
+  should_block?: boolean;
+  block_reason?: string;
+  _provider?: string;
 }
 
 const languages = [
@@ -155,6 +158,25 @@ export default function VideoAnalysis() {
 
             {result && (
               <>
+                {result._provider && (
+                  <div className="flex items-center justify-end mb-2">
+                    <Badge
+                      variant="outline"
+                      className={`font-mono text-[10px] ${
+                        result._provider === "google-ai-studio"
+                          ? "border-primary/40 text-primary bg-primary/5"
+                          : "border-orange-500/40 text-orange-500 bg-orange-500/5"
+                      }`}
+                      title={
+                        result._provider === "google-ai-studio"
+                          ? "Bepul Google AI Studio orqali"
+                          : "Lovable AI Gateway orqali (kredit sarflandi)"
+                      }
+                    >
+                      {result._provider === "google-ai-studio" ? "⚡ Bepul (Google)" : "💳 Kreditli (Lovable)"}
+                    </Badge>
+                  </div>
+                )}
                 {result.harmful_content?.is_harmful ? (
                   <div className="flex flex-col items-center justify-center py-16 border border-destructive/30 bg-destructive/5 rounded-xl">
                     <ShieldAlert className="w-16 h-16 text-destructive mb-4" />

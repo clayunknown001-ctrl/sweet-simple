@@ -1,6 +1,6 @@
 [package]
 name = "ai-radar"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "AI Radar — OS-level content shield"
 authors = ["AI Radar"]
@@ -25,13 +25,19 @@ chrono = "0.4"
 urlencoding = "2"
 anyhow = "1"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 # Lokal NSFW (optional — feature flag bilan):
-# ort = { version = "2.0", features = ["download-binaries"] }
-# ndarray = "0.16"
+ort = { version = "2.0", features = ["download-binaries"], optional = true }
+ndarray = { version = "0.16", optional = true }
 
 [features]
 default = []
-local-nsfw = []  # `cargo build --features local-nsfw` — ONNX runtime qo'shadi
+local-nsfw = ["dep:ort", "dep:ndarray"]  # `cargo build --release --features local-nsfw`
 
 [profile.release]
 opt-level = "z"

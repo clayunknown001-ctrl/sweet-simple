@@ -133,11 +133,27 @@
     "linkedin.com","medium.com","substack.com",
     "supabase.com","vercel.com","netlify.com","cloudflare.com","aws.amazon.com",
   ];
+  // Foydalanuvchi qo'shgan whitelist (popup'dan)
+  let USER_WHITELIST = [];
+  try {
+    chrome.storage?.local?.get?.(["userWhitelist"], (s) => {
+      if (Array.isArray(s?.userWhitelist)) USER_WHITELIST = s.userWhitelist;
+    });
+    chrome.storage?.onChanged?.addListener?.((c, area) => {
+      if (area === "local" && c.userWhitelist) {
+        USER_WHITELIST = Array.isArray(c.userWhitelist.newValue) ? c.userWhitelist.newValue : [];
+      }
+    });
+  } catch {}
+
   function isWhitelisted() {
     const host = location.hostname.toLowerCase();
-    return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
+    const all = WHITELIST_DOMAINS.concat(USER_WHITELIST.map((d) => String(d).toLowerCase()));
+    return all.some((d) => host === d || host.endsWith("." + d));
   }
-  const WHITELISTED = isWhitelisted();
+  let WHITELISTED = isWhitelisted();
+  // Re-evaluate whitelist when user changes it
+  setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
   // ========== BLACKLIST (darhol blok) ==========
   const BLOCKED_DOMAINS = [
