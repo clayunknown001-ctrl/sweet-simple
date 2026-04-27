@@ -21,6 +21,29 @@
   let active = 0;
   let blockedCount = 0;
   let aiDisabled = false;
+  let paused = false;
+
+  // Persisted stats (chrome.storage.local)
+  const stats = { totalBlocked: 0, localBlocked: 0, cloudBlocked: 0, localApproved: 0 };
+  try {
+    chrome.storage?.local?.get?.(["totalBlocked","localBlocked","cloudBlocked","localApproved","paused"], (s) => {
+      if (!s) return;
+      stats.totalBlocked = s.totalBlocked || 0;
+      stats.localBlocked = s.localBlocked || 0;
+      stats.cloudBlocked = s.cloudBlocked || 0;
+      stats.localApproved = s.localApproved || 0;
+      paused = !!s.paused;
+      blockedCount = stats.totalBlocked;
+    });
+    chrome.storage?.onChanged?.addListener?.((changes, area) => {
+      if (area === "local" && changes.paused) paused = !!changes.paused.newValue;
+    });
+  } catch {}
+
+  function persistStats(extra = {}) {
+    try { chrome.storage?.local?.set?.({ ...stats, ...extra }); } catch {}
+  }
+  function noteLocalApproved() { stats.localApproved++; persistStats(); }
 
   // ========== NSFW LOKAL MODEL (page-context'ga inject) ==========
   let nsfwReady = false;
