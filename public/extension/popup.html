@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <style>
     body {
-      width: 280px;
+      width: 300px;
       margin: 0;
       padding: 16px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -25,6 +25,14 @@
       border-radius: 6px;
       font-size: 12px;
       margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .status.paused {
+      background: rgba(234, 179, 8, 0.1);
+      border-color: rgba(234, 179, 8, 0.4);
+      color: #fde68a;
     }
     .pulse {
       display: inline-block;
@@ -36,25 +44,62 @@
       box-shadow: 0 0 8px #4ade80;
       animation: pulse 1.5s infinite;
     }
+    .status.paused .pulse { background:#fbbf24; box-shadow:0 0 8px #fbbf24; animation:none; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     .stat {
       display: flex;
       justify-content: space-between;
-      padding: 8px 0;
+      padding: 6px 0;
       border-bottom: 1px solid rgba(255,255,255,0.08);
       font-size: 12px;
     }
     .stat span:last-child { color: #4ade80; font-weight: bold; }
-    .footer { font-size: 10px; opacity: 0.5; margin-top: 12px; text-align: center; }
+    .stat.muted span:last-child { color:#94a3b8; font-weight:normal; }
+    .last {
+      margin-top: 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #cbd5e1;
+      max-height: 60px;
+      overflow: hidden;
+    }
+    .last b { color:#f87171; }
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 8px;
+      background: rgba(74,222,128,0.15);
+      border: 1px solid rgba(74,222,128,0.4);
+      color: #4ade80;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    button:hover { background: rgba(74,222,128,0.25); }
+    button.paused { background: rgba(234,179,8,0.15); border-color: rgba(234,179,8,0.4); color:#fbbf24; }
+    .footer { font-size: 10px; opacity: 0.5; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
-  <h1>🛡️ AI Radar</h1>
-  <div class="status"><span class="pulse"></span>Doimiy kuzatuvda</div>
-  <div class="stat"><span>Bloklangan (sessiya)</span><span id="blocked">0</span></div>
-  <div class="stat"><span>Til</span><span>O'zbek</span></div>
-  <div class="stat"><span>Rejim</span><span>Tezkor</span></div>
-  <div class="footer">AI Radar barcha saytlarda faol</div>
+  <h1>🛡️ AI Radar v1.3</h1>
+  <div class="status" id="statusBox"><span><span class="pulse"></span><span id="statusText">Doimiy kuzatuvda</span></span></div>
+
+  <div class="stat"><span>Bloklangan (jami)</span><span id="blocked">0</span></div>
+  <div class="stat"><span>Lokal AI (bepul)</span><span id="local">0</span></div>
+  <div class="stat"><span>Cloud AI (kredit)</span><span id="cloud">0</span></div>
+  <div class="stat muted"><span>Tejalgan kredit</span><span id="saved">0</span></div>
+  <div class="stat muted"><span>Til / Rejim</span><span>UZ / Tezkor</span></div>
+
+  <div class="last" id="lastBlock">Hali blok yo'q.</div>
+
+  <button id="toggleBtn">⏸ Vaqtincha to'xtatish</button>
+  <div class="footer">AI Radar — local-first, cloud-fallback</div>
   <script src="popup.js"></script>
 </body>
 </html>
