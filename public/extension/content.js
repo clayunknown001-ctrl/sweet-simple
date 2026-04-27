@@ -429,10 +429,11 @@
   }
 
   function processVideo(video) {
+    if (paused) return;
     if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
     const poster = video.poster;
     const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
-    if (local.block) { shieldElement(video, local.reason); return; }
+    if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
     if (aiDisabled) return;
 
@@ -440,7 +441,7 @@
     if (poster && !poster.startsWith("data:")) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
-        if (block) shieldElement(video, reason);
+        if (block) shieldElement(video, reason, "cloud");
       });
     } else {
       enqueue(() => captureFrame(video));
@@ -455,6 +456,7 @@
   }
 
   async function captureFrame(video) {
+    if (paused) return;
     if (video.readyState < 2) {
       video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
       return;
@@ -488,8 +490,8 @@
           const r = await classifyLocal(dataUrl, 4000);
           if (r && r.preds) {
             const decision = decideFromNsfw(r.preds);
-            if (decision?.block) { shieldElement(video, decision.reason); return; }
-            if (decision?.confident && !decision.block) continue;
+            if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
+            if (decision?.confident && !decision.block) { noteLocalApproved(); continue; }
           }
         }
 
@@ -497,7 +499,7 @@
         if (aiDisabled) continue;
         const b64 = dataUrl.split(",")[1];
         const { block, reason } = await analyzeBase64(b64);
-        if (block) { shieldElement(video, reason); return; }
+        if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
   }
