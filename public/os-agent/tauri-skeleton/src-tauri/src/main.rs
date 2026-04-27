@@ -163,21 +163,89 @@ fn img_to_jpeg_b64(img: &image::DynamicImage) -> anyhow::Result<String> {
 }
 
 // === Lokal NSFW (ONNX MobileNet) ===
-// Model fayli `models/nsfw_mobilenet.onnx` sifatida bundle qilinadi (~5MB).
-// Birinchi marta `https://github.com/iola1999/nsfw_model_onnx` dan yuklab olinadi.
+// Model: GantMan/nsfw_model (TFJS → ONNX export, ~5MB).
+// Bundle yo'li: `models/nsfw_mobilenet_v2.onnx` (resources/ ichida).
+// Sinflar tartibi: [Drawing, Hentai, Neutral, Porn, Sexy]
+//
+// Build: `cargo build --release --features local-nsfw`
+// Modelsiz build: `cargo build --release` (cloud-only fallback)
+
+#[cfg(feature = "local-nsfw")]
+mod nsfw {
+    use anyhow::{anyhow, Result};
+    use image::DynamicImage;
+    use ndarray::{Array4, Axis};
+    use ort::{session::Session, value::Value};
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+
+    static SESSION: OnceLock<Option<Session>> = OnceLock::new();
+
+    fn model_path() -> PathBuf {
+        // Tauri resource yo'li yoki ENV override
+        if let Ok(p) = std::env::var("AI_RADAR_NSFW_MODEL") {
+            return PathBuf::from(p);
+        }
+        std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|p| p.join("models/nsfw_mobilenet_v2.onnx")))
+            .unwrap_or_else(|| PathBuf::from("models/nsfw_mobilenet_v2.onnx"))
+    }
+
+    fn session() -> Option<&'static Session> {
+        SESSION
+            .get_or_init(|| {
+                let path = model_path();
+                if !path.exists() {
+                    eprintln!("[nsfw] model topilmadi: {} — cloud-only", path.display());
+                    return None;
+                }
+                Session::builder()
+                    .ok()
+                    .and_then(|b| b.commit_from_file(&path).ok())
+                    .or_else(|| {
+                        eprintln!("[nsfw] sessiya yarata olmadi");
+                        None
+                    })
+            })
+            .as_ref()
+    }
+
+    /// 224x224 RGB → [1,3,224,224] f32 normalized (0..1)
+    fn preprocess(img: &DynamicImage) -> Array4<f32> {
+        let resized = img
+            .resize_exact(224, 224, image::imageops::FilterType::Triangle)
+            .to_rgb8();
+        let mut arr = Array4::<f32>::zeros((1, 3, 224, 224));
+        for (x, y, p) in resized.enumerate_pixels() {
+            arr[[0, 0, y as usize, x as usize]] = p[0] as f32 / 255.0;
+            arr[[0, 1, y as usize, x as usize]] = p[1] as f32 / 255.0;
+            arr[[0, 2, y as usize, x as usize]] = p[2] as f32 / 255.0;
+        }
+        arr
+    }
+
+    pub fn score(img: &DynamicImage) -> Option<f32> {
+        let sess = session()?;
+        let input = preprocess(img);
+        let value = Value::from_array(input).ok()?;
+        let outputs = sess.run(ort::inputs!["input" => value].ok()?).ok()?;
+        let (_, out) = outputs.iter().next()?;
+        let tensor = out.try_extract_tensor::<f32>().ok()?;
+        let view = tensor.view();
+        let scores: Vec<f32> = view.iter().copied().collect();
+        if scores.len() < 5 { return None; }
+        // [Drawing, Hentai, Neutral, Porn, Sexy]
+        let nsfw = scores[1] + scores[3] + scores[4] * 0.5;
+        Some(nsfw.min(1.0))
+    }
+}
+
 fn local_nsfw_score(_img: &image::DynamicImage) -> Option<f32> {
-    // TODO: `ort` crate bilan to'liq inference.
-    // Hozir placeholder qaytaramiz — None (cloud'ga o'tadi).
-    //
-    // Real implementatsiya:
-    //   let session = Session::builder()?.commit_from_file("models/nsfw.onnx")?;
-    //   let input = preprocess(img, 224, 224); // [1,3,224,224] f32
-    //   let outputs = session.run(ort::inputs!["input" => input.view()]?)?;
-    //   let scores = outputs[0].try_extract_tensor::<f32>()?;
-    //   // [drawings, hentai, neutral, porn, sexy]
-    //   let nsfw = scores[1] + scores[3] + scores[4] * 0.5;
-    //   Some(nsfw)
-    None
+    #[cfg(feature = "local-nsfw")]
+    { return nsfw::score(_img); }
+    #[cfg(not(feature = "local-nsfw"))]
+    { None }
 }
 
 // === Cloud API ===
