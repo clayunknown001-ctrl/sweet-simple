@@ -417,23 +417,59 @@
     }
   }
 
-  function captureFrame(video) {
-    if (aiDisabled) return;
+  function captureFrameDataUrl(video, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(video, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.6);
+  }
+
+  async function captureFrame(video) {
     if (video.readyState < 2) {
       video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
       return;
     }
-    enqueue(async () => {
+    const W = Math.min(video.videoWidth || 256, 384);
+    const H = Math.min(video.videoHeight || 256, 384);
+
+    // v1.3: 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
+    const samplePoints = [];
+    const dur = isFinite(video.duration) ? video.duration : 0;
+    if (dur > 2) {
+      samplePoints.push(0, dur * 0.33, dur * 0.66);
+    } else {
+      samplePoints.push(video.currentTime || 0);
+    }
+
+    for (const t of samplePoints) {
       try {
-        const c = document.createElement("canvas");
-        c.width = Math.min(video.videoWidth || 256, 384);
-        c.height = Math.min(video.videoHeight || 256, 384);
-        c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
-        const b64 = c.toDataURL("image/jpeg", 0.6).split(",")[1];
+        if (dur > 2 && Math.abs(video.currentTime - t) > 0.5) {
+          await new Promise((resolve) => {
+            const onSeek = () => { video.removeEventListener("seeked", onSeek); resolve(); };
+            video.addEventListener("seeked", onSeek, { once: true });
+            try { video.currentTime = t; } catch { resolve(); }
+            setTimeout(resolve, 1500);
+          });
+        }
+        const dataUrl = captureFrameDataUrl(video, W, H);
+
+        // 1. Lokal NSFW (frame'ga)
+        if (nsfwReady) {
+          const r = await classifyLocal(dataUrl, 4000);
+          if (r && r.preds) {
+            const decision = decideFromNsfw(r.preds);
+            if (decision?.block) { shieldElement(video, decision.reason); return; }
+            if (decision?.confident && !decision.block) continue;
+          }
+        }
+
+        // 2. Cloud (faqat shubhali kadr)
+        if (aiDisabled) continue;
+        const b64 = dataUrl.split(",")[1];
         const { block, reason } = await analyzeBase64(b64);
-        if (block) shieldElement(video, reason);
+        if (block) { shieldElement(video, reason); return; }
       } catch {}
-    });
+    }
   }
 
   const io = new IntersectionObserver((entries) => {
