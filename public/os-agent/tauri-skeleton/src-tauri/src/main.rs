@@ -114,16 +114,22 @@ fn active_app_is_whitelisted() -> bool {
 
 #[cfg(target_os = "windows")]
 fn windows_active_whitelisted() -> bool {
-    // Windows API: GetForegroundWindow → GetWindowThreadProcessId → process name
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
+    use sysinfo::{Pid, System};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
     unsafe {
-        // Bu yerda winapi/windows crate ishlatiladi. Hozircha placeholder.
-        // To'liq implementatsiya `windows` crate bilan:
-        //   let hwnd = GetForegroundWindow();
-        //   let mut pid = 0u32;
-        //   GetWindowThreadProcessId(hwnd, &mut pid);
-        //   ...
+        let hwnd: HWND = GetForegroundWindow();
+        if hwnd.0 == 0 { return false; }
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 { return false; }
+        let mut sys = System::new();
+        sys.refresh_processes();
+        if let Some(p) = sys.process(Pid::from_u32(pid)) {
+            let name = p.name().to_string_lossy().to_lowercase();
+            return WHITELIST_APPS.iter().any(|w| name.contains(w));
+        }
         false
     }
 }
