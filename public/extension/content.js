@@ -55,6 +55,7 @@
     });
   }
   // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
+  // v1.3: balanced — Porn/Hentai aniq blok, Sexy faqat juda yuqori, Neutral keng o'tkaziladi
   function decideFromNsfw(preds) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -62,11 +63,10 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    // v1.2: false-positive kamaytirish — chegaralar biroz qattiqroq, oraliq cloud'ga
-    if (porn > 0.65 || hentai > 0.65) return { block: true, reason: "Behayo kontent (lokal)", confident: true };
-    if (sexy > 0.85) return { block: true, reason: "Erotik kontent (lokal)", confident: true };
-    if (neutral > 0.75 || drawing > 0.80) return { block: false, confident: true };
-    if (porn + hentai + sexy > 0.55) return { block: false, confident: false, suspicious: true };
+    if (porn > 0.60 || hentai > 0.60) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (sexy > 0.88 && neutral < 0.15) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
+    if (neutral > 0.70 || drawing > 0.75) return { block: false, confident: true };
+    if (porn + hentai > 0.45) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: true };
   }
 
@@ -413,27 +413,63 @@
         if (block) shieldElement(video, reason);
       });
     } else {
-      captureFrame(video);
+      enqueue(() => captureFrame(video));
     }
   }
 
-  function captureFrame(video) {
-    if (aiDisabled) return;
+  function captureFrameDataUrl(video, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(video, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.6);
+  }
+
+  async function captureFrame(video) {
     if (video.readyState < 2) {
       video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
       return;
     }
-    enqueue(async () => {
+    const W = Math.min(video.videoWidth || 256, 384);
+    const H = Math.min(video.videoHeight || 256, 384);
+
+    // v1.3: 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
+    const samplePoints = [];
+    const dur = isFinite(video.duration) ? video.duration : 0;
+    if (dur > 2) {
+      samplePoints.push(0, dur * 0.33, dur * 0.66);
+    } else {
+      samplePoints.push(video.currentTime || 0);
+    }
+
+    for (const t of samplePoints) {
       try {
-        const c = document.createElement("canvas");
-        c.width = Math.min(video.videoWidth || 256, 384);
-        c.height = Math.min(video.videoHeight || 256, 384);
-        c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
-        const b64 = c.toDataURL("image/jpeg", 0.6).split(",")[1];
+        if (dur > 2 && Math.abs(video.currentTime - t) > 0.5) {
+          await new Promise((resolve) => {
+            const onSeek = () => { video.removeEventListener("seeked", onSeek); resolve(); };
+            video.addEventListener("seeked", onSeek, { once: true });
+            try { video.currentTime = t; } catch { resolve(); }
+            setTimeout(resolve, 1500);
+          });
+        }
+        const dataUrl = captureFrameDataUrl(video, W, H);
+
+        // 1. Lokal NSFW (frame'ga)
+        if (nsfwReady) {
+          const r = await classifyLocal(dataUrl, 4000);
+          if (r && r.preds) {
+            const decision = decideFromNsfw(r.preds);
+            if (decision?.block) { shieldElement(video, decision.reason); return; }
+            if (decision?.confident && !decision.block) continue;
+          }
+        }
+
+        // 2. Cloud (faqat shubhali kadr)
+        if (aiDisabled) continue;
+        const b64 = dataUrl.split(",")[1];
         const { block, reason } = await analyzeBase64(b64);
-        if (block) shieldElement(video, reason);
+        if (block) { shieldElement(video, reason); return; }
       } catch {}
-    });
+    }
   }
 
   const io = new IntersectionObserver((entries) => {
