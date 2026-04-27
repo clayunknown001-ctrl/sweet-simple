@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Radar — Real-Time Content Shield",
-  "version": "1.3.0",
-  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni lokal NSFW AI + video frame-sampling + cloud bilan real vaqtda bloklaydi.",
+  "version": "1.4.0",
+  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni lokal NSFW AI + cloud bilan real vaqtda bloklaydi. Statistika, pause, kredit-tejash bilan.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
