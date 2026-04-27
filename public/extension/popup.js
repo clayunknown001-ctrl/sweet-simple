@@ -49,3 +49,60 @@ $("toggleBtn").addEventListener("click", () => {
     chrome.storage.local.set({ paused: !paused });
   });
 });
+
+// === Whitelist boshqaruv ===
+function renderWhitelist(list) {
+  const el = $("wlList");
+  if (!el) return;
+  if (!list || !list.length) {
+    el.innerHTML = '<div style="color:#64748b;font-size:11px;padding:4px;">Hali domen qo\'shilmagan.</div>';
+    return;
+  }
+  el.innerHTML = list
+    .map((d, i) => `<div class="wl-item"><span>${escapeHtml(d)}</span><button data-i="${i}" title="O'chirish">×</button></div>`)
+    .join("");
+  el.querySelectorAll("button[data-i]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = +btn.getAttribute("data-i");
+      chrome.storage.local.get(["userWhitelist"], (s) => {
+        const arr = Array.isArray(s.userWhitelist) ? s.userWhitelist.slice() : [];
+        arr.splice(i, 1);
+        chrome.storage.local.set({ userWhitelist: arr });
+      });
+    });
+  });
+}
+
+function normDomain(input) {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0]
+    .split(":")[0];
+}
+
+const wlAdd = $("wlAdd");
+const wlInput = $("wlInput");
+if (wlAdd && wlInput) {
+  const add = () => {
+    const v = normDomain(wlInput.value);
+    if (!v || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(v)) return;
+    chrome.storage.local.get(["userWhitelist"], (s) => {
+      const arr = Array.isArray(s.userWhitelist) ? s.userWhitelist.slice() : [];
+      if (!arr.includes(v)) arr.push(v);
+      chrome.storage.local.set({ userWhitelist: arr });
+      wlInput.value = "";
+    });
+  };
+  wlAdd.addEventListener("click", add);
+  wlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+}
+
+chrome.storage.local.get(["userWhitelist"], (s) => renderWhitelist(s.userWhitelist || []));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.userWhitelist) {
+    renderWhitelist(changes.userWhitelist.newValue || []);
+  }
+});
