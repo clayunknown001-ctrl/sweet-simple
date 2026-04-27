@@ -413,7 +413,7 @@
         if (block) shieldElement(video, reason);
       });
     } else {
-      captureFrame(video);
+      enqueue(() => captureFrame(video));
     }
   }
 
