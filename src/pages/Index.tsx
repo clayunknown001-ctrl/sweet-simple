@@ -1,4 +1,4 @@
-import { Sparkles, FileText, Image as ImageIcon, Video, Code2, ArrowRight } from "lucide-react";
+import { Sparkles, FileText, Image as ImageIcon, Video, Code2, ArrowRight, Cpu, Cloud, Shield, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
