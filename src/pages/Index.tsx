@@ -44,28 +44,28 @@ export default function Index() {
       <Navbar />
 
       {/* Hero */}
-      <section className="container mx-auto pt-32 pb-20 px-4 text-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary text-sm font-mono mb-8">
-          <Sparkles className="w-4 h-4" />
+      <section className="container mx-auto pt-24 sm:pt-32 pb-16 sm:pb-20 px-4 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary text-xs sm:text-sm font-mono mb-6 sm:mb-8">
+          <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           AI-powered content analysis
         </div>
-        <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold mb-5 sm:mb-6 leading-[1.1]">
           <span className="text-foreground">Kontentni </span>
           <span className="text-primary drop-shadow-[0_0_20px_hsl(var(--primary)/0.5)]">AI bilan</span>
           <br />
           <span className="text-foreground">tahlil qiling</span>
         </h1>
-        <p className="text-muted-foreground text-lg md:text-xl max-w-2xl mx-auto mb-10">
+        <p className="text-muted-foreground text-base sm:text-lg md:text-xl max-w-2xl mx-auto mb-8 sm:mb-10 px-2">
           Matn va rasmlarni sun'iy intellekt yordamida chuqur tahlil qiling.
           Kayfiyat, til, ob'ektlar, ranglar va boshqalarni bir zumda aniqlang.
         </p>
-        <div className="flex flex-wrap gap-4 justify-center">
-          <Button asChild className="bg-primary text-primary-foreground hover:opacity-90 glow-primary px-8 py-6 text-base">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center items-stretch sm:items-center max-w-md sm:max-w-none mx-auto">
+          <Button asChild className="bg-primary text-primary-foreground hover:opacity-90 glow-primary px-6 sm:px-8 py-5 sm:py-6 text-sm sm:text-base">
             <Link to="/extension">
               🛡️ Brauzer Radarni o'rnatish
             </Link>
           </Button>
-          <Button asChild variant="outline" className="border-cyan/30 text-cyan hover:bg-cyan/10 px-6">
+          <Button asChild variant="outline" className="border-cyan/30 text-cyan hover:bg-cyan/10 px-6 py-5 sm:py-3">
             <Link to="/image-analysis">
               <ImageIcon className="w-4 h-4 mr-2" />
               Rasm sinash
