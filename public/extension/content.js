@@ -286,7 +286,9 @@
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
+        el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
+        el.currentSrc = BLANK_PIXEL;
       } catch {}
     } else if (el.tagName === "VIDEO") {
       try {
@@ -306,19 +308,40 @@
     }
 
     el.classList.add("ai-radar-blocked");
-    el.style.pointerEvents = "none";
+    Object.assign(el.style, {
+      pointerEvents: "none",
+      opacity: "0",
+      visibility: "hidden",
+    });
+
+    const hardStop = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return false;
+    };
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+      el.addEventListener(evt, hardStop, { capture: true, passive: false });
+    });
 
     // Parent <a> ga ham click bloklash
-    const link = el.closest && el.closest("a");
-    if (link && !link.dataset.aiRadarBlockedLink) {
-      link.dataset.aiRadarBlockedLink = "1";
-      link.dataset.aiRadarOrigHref = link.href;
-      link.removeAttribute("href");
-      link.style.cursor = "not-allowed";
-      const blockClick = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false; };
-      link.addEventListener("click", blockClick, { capture: true });
-      link.addEventListener("mousedown", blockClick, { capture: true });
-      link.addEventListener("auxclick", blockClick, { capture: true });
+    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.parentElement]
+      .filter(Boolean)
+      .filter((node, i, arr) => arr.indexOf(node) === i);
+    blockers.forEach((node) => {
+      if (node.dataset.aiRadarBlockedLink) return;
+      node.dataset.aiRadarBlockedLink = "1";
+      if (node.href) node.dataset.aiRadarOrigHref = node.href;
+      try { node.removeAttribute("href"); } catch {}
+      node.style.cursor = "not-allowed";
+      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+        node.addEventListener(evt, hardStop, { capture: true, passive: false });
+      });
+    });
+
+    const mediaBox = el.closest && el.closest('article, [role="button"], a, div');
+    if (mediaBox && mediaBox !== el) {
+      mediaBox.dataset.aiRadarBlockedContainer = "1";
     }
 
     // Shield overlay
@@ -334,7 +357,9 @@
     shield.style.width = (r.width || el.offsetWidth || 200) + "px";
     shield.style.height = (r.height || el.offsetHeight || 200) + "px";
     // Shield'ga bosish ham hech narsa qilmaydi
-    shield.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); }, { capture: true });
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+      shield.addEventListener(evt, hardStop, { capture: true, passive: false });
+    });
     el.insertAdjacentElement("afterend", shield);
   }
 
