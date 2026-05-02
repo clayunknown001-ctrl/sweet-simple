@@ -77,20 +77,32 @@
       window.postMessage({ __aiRadar: "classify", id, src }, "*");
     });
   }
+  function hostMatches(domains) {
+    const host = location.hostname.toLowerCase().replace(/^www\./, "");
+    return domains.some((d) => host === d || host.endsWith("." + d));
+  }
+  const VISUAL_RISK_DOMAINS = [
+    "instagram.com", "youtube.com", "youtu.be", "pinterest.com", "tiktok.com",
+    "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
+  ];
+  const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
+
   // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
-  // v1.3: balanced — Porn/Hentai aniq blok, Sexy faqat juda yuqori, Neutral keng o'tkaziladi
-  function decideFromNsfw(preds) {
+  // v1.7: zararli vizualni agressivroq ushlaydi, lekin Neutral yuqori bo'lsa false-block qilmaydi.
+  function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
     const hentai = preds.Hentai || 0;
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    if (porn > 0.60 || hentai > 0.60) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
-    if (sexy > 0.88 && neutral < 0.15) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
-    if (neutral > 0.70 || drawing > 0.75) return { block: false, confident: true };
-    if (porn + hentai > 0.45) return { block: false, confident: false, suspicious: true };
-    return { block: false, confident: true };
+    if (porn > 0.45 || hentai > 0.45) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (sexy > 0.72 && neutral < 0.45) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
+    if (strict && sexy > 0.55 && neutral < 0.55) return { block: true, reason: "Riskli vizual kontent (lokal AI)", confident: true };
+    if (neutral > 0.88 && sexy < 0.14 && porn + hentai < 0.12) return { block: false, confident: true };
+    if (drawing > 0.82 && porn + hentai + sexy < 0.25) return { block: false, confident: true };
+    if (sexy > 0.32 || porn + hentai > 0.18) return { block: false, confident: false, suspicious: true };
+    return { block: false, confident: !strict, suspicious: strict };
   }
 
   // ========== CACHE (localStorage, 7 kun) ==========
