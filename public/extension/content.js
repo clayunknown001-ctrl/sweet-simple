@@ -542,10 +542,14 @@
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
         if (block) shieldElement(video, reason, "cloud");
+        else if (local.suspicious && VISUAL_RISK_HOST) setTimeout(() => captureFrame(video), 800);
       });
     } else {
       enqueue(() => captureFrame(video));
     }
+    video.addEventListener("playing", () => {
+      if (!video.dataset.aiRadarBlocked) setTimeout(() => captureFrame(video), 1200);
+    });
   }
 
   function captureFrameDataUrl(video, w, h) {
@@ -589,7 +593,7 @@
         if (nsfwReady) {
           const r = await classifyLocal(dataUrl, 4000);
           if (r && r.preds) {
-            const decision = decideFromNsfw(r.preds);
+            const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST);
             if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
             if (decision?.confident && !decision.block) { noteLocalApproved(); continue; }
           }
