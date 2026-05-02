@@ -32,17 +32,40 @@ function escapeHtml(s) {
 }
 
 chrome.storage.local.get(
-  ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused"],
-  render
+  ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused", "dailyBlocks"],
+  (s) => { render(s); renderSpark(s.dailyBlocks || {}); }
 );
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   chrome.storage.local.get(
-    ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused"],
-    render
+    ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused", "dailyBlocks"],
+    (s) => { render(s); renderSpark(s.dailyBlocks || {}); }
   );
 });
+
+function renderSpark(db) {
+  const svg = document.getElementById("spark");
+  if (!svg) return;
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    days.push({ d, n: db[d] || 0 });
+  }
+  const total = days.reduce((a, b) => a + b.n, 0);
+  const wt = document.getElementById("weekTotal");
+  if (wt) wt.textContent = `${total} blok`;
+  const max = Math.max(1, ...days.map((x) => x.n));
+  const W = 268, H = 40, pad = 4, bw = (W - pad * 2) / days.length;
+  let bars = "";
+  days.forEach((x, i) => {
+    const h = Math.max(2, ((H - pad * 2) * x.n) / max);
+    const bx = pad + i * bw + 2;
+    const by = H - pad - h;
+    bars += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${x.n > 0 ? "#4ade80" : "rgba(255,255,255,0.1)"}" opacity="${x.n > 0 ? 0.9 : 0.5}"/>`;
+  });
+  svg.innerHTML = bars;
+}
 
 $("toggleBtn").addEventListener("click", () => {
   chrome.storage.local.get(["paused"], ({ paused }) => {
