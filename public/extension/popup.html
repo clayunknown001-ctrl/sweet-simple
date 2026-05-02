@@ -106,7 +106,7 @@
   </style>
 </head>
 <body>
-  <h1>🛡️ AI Radar v1.5</h1>
+  <h1>🛡️ AI Radar v1.6</h1>
   <div class="status" id="statusBox"><span><span class="pulse"></span><span id="statusText">Doimiy kuzatuvda</span></span></div>
 
   <div class="stat"><span>Bloklangan (jami)</span><span id="blocked">0</span></div>
@@ -122,6 +122,11 @@
       <span>So'nggi 7 kun</span><span id="weekTotal">0 blok</span>
     </div>
     <svg id="spark" width="268" height="40" viewBox="0 0 268 40" style="display:block;background:rgba(255,255,255,0.03);border-radius:4px;"></svg>
+  </div>
+
+  <div style="margin-top:12px;">
+    <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">Top bloklangan saytlar</div>
+    <div id="topHosts" style="font-size:11px;"></div>
   </div>
 
   <button id="toggleBtn">⏸ Vaqtincha to'xtatish</button>

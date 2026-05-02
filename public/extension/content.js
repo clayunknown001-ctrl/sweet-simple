@@ -239,18 +239,24 @@
     if (source === "cloud") stats.cloudBlocked++;
     else stats.localBlocked++;
     const lastBlock = { reason: reason || "", host: location.hostname, ts: Date.now() };
-    // 7-kunlik ring buffer (YYYY-MM-DD → count)
+    // 7-kunlik ring buffer + top hostlar
     try {
-      chrome.storage?.local?.get?.(["dailyBlocks"], (s) => {
+      chrome.storage?.local?.get?.(["dailyBlocks", "hostBlocks"], (s) => {
         const today = new Date().toISOString().slice(0, 10);
         const db = (s.dailyBlocks && typeof s.dailyBlocks === "object") ? { ...s.dailyBlocks } : {};
         db[today] = (db[today] || 0) + 1;
-        // 7 kundan oldingi yozuvlarni tozalash
         const cutoff = Date.now() - 7 * 86400000;
         for (const k of Object.keys(db)) {
           if (new Date(k).getTime() < cutoff) delete db[k];
         }
-        chrome.storage?.local?.set?.({ ...stats, lastBlock, dailyBlocks: db });
+        const hb = (s.hostBlocks && typeof s.hostBlocks === "object") ? { ...s.hostBlocks } : {};
+        const host = location.hostname.replace(/^www\./, "");
+        hb[host] = (hb[host] || 0) + 1;
+        // Faqat top-20 ni saqlash (storage shishmasligi uchun)
+        const trimmed = Object.entries(hb)
+          .sort((a, b) => b[1] - a[1]).slice(0, 20)
+          .reduce((acc, [k, v]) => (acc[k] = v, acc), {});
+        chrome.storage?.local?.set?.({ ...stats, lastBlock, dailyBlocks: db, hostBlocks: trimmed });
       });
     } catch {
       persistStats({ lastBlock });
