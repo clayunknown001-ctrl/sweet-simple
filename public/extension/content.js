@@ -77,20 +77,32 @@
       window.postMessage({ __aiRadar: "classify", id, src }, "*");
     });
   }
+  function hostMatches(domains) {
+    const host = location.hostname.toLowerCase().replace(/^www\./, "");
+    return domains.some((d) => host === d || host.endsWith("." + d));
+  }
+  const VISUAL_RISK_DOMAINS = [
+    "instagram.com", "youtube.com", "youtu.be", "pinterest.com", "tiktok.com",
+    "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
+  ];
+  const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
+
   // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
-  // v1.3: balanced — Porn/Hentai aniq blok, Sexy faqat juda yuqori, Neutral keng o'tkaziladi
-  function decideFromNsfw(preds) {
+  // v1.7: zararli vizualni agressivroq ushlaydi, lekin Neutral yuqori bo'lsa false-block qilmaydi.
+  function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
     const hentai = preds.Hentai || 0;
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    if (porn > 0.60 || hentai > 0.60) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
-    if (sexy > 0.88 && neutral < 0.15) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
-    if (neutral > 0.70 || drawing > 0.75) return { block: false, confident: true };
-    if (porn + hentai > 0.45) return { block: false, confident: false, suspicious: true };
-    return { block: false, confident: true };
+    if (porn > 0.45 || hentai > 0.45) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (sexy > 0.72 && neutral < 0.45) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
+    if (strict && sexy > 0.55 && neutral < 0.55) return { block: true, reason: "Riskli vizual kontent (lokal AI)", confident: true };
+    if (neutral > 0.88 && sexy < 0.14 && porn + hentai < 0.12) return { block: false, confident: true };
+    if (drawing > 0.82 && porn + hentai + sexy < 0.25) return { block: false, confident: true };
+    if (sexy > 0.32 || porn + hentai > 0.18) return { block: false, confident: false, suspicious: true };
+    return { block: false, confident: !strict, suspicious: strict };
   }
 
   // ========== CACHE (localStorage, 7 kun) ==========
@@ -124,7 +136,7 @@
   const WHITELIST_DOMAINS = [
     "wikipedia.org","wikimedia.org","github.com","stackoverflow.com","stackexchange.com",
     "google.com","gmail.com","drive.google.com","docs.google.com","calendar.google.com",
-    "youtube.com","youtu.be","khanacademy.org","coursera.org","edx.org","udemy.com",
+    "khanacademy.org","coursera.org","edx.org","udemy.com",
     "mit.edu","stanford.edu","harvard.edu","mdn.mozilla.org","developer.mozilla.org",
     "npmjs.com","nodejs.org","python.org","reactjs.org","react.dev","vuejs.org",
     "openai.com","anthropic.com","huggingface.co","kaggle.com","arxiv.org",
@@ -148,8 +160,10 @@
 
   function isWhitelisted() {
     const host = location.hostname.toLowerCase();
-    const all = WHITELIST_DOMAINS.concat(USER_WHITELIST.map((d) => String(d).toLowerCase()));
-    return all.some((d) => host === d || host.endsWith("." + d));
+    const user = USER_WHITELIST.map((d) => String(d).toLowerCase());
+    if (user.some((d) => host === d || host.endsWith("." + d))) return true;
+    if (VISUAL_RISK_HOST) return false;
+    return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
   // Re-evaluate whitelist when user changes it
@@ -192,6 +206,20 @@
     try { return decodeURIComponent(String(v || "")).toLowerCase().replace(/\+/g, " "); }
     catch { return String(v || "").toLowerCase(); }
   }
+  function pickFromSrcset(srcset) {
+    if (!srcset) return "";
+    const candidates = String(srcset).split(",").map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
+    return candidates[candidates.length - 1] || "";
+  }
+  function mediaUrl(el) {
+    const srcsetUrl = pickFromSrcset(el.srcset || el.getAttribute?.("srcset"));
+    const attrs = [
+      el.currentSrc, el.src, srcsetUrl,
+      el.getAttribute?.("data-src"), el.getAttribute?.("data-original"),
+      el.getAttribute?.("data-lazy-src"), el.getAttribute?.("data-actualsrc"),
+    ];
+    return attrs.find((u) => u && u !== BLANK_PIXEL && !String(u).startsWith("data:")) || "";
+  }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
     return t && RISKY_KEYWORDS.some((kw) => t.includes(kw));
@@ -210,8 +238,14 @@
     return parts.filter(Boolean).join(" ").slice(0, 1000);
   }
   function localBlockDecision(el, url) {
-    if (matchesRiskyUrl(url)) return { block: true, reason: "Xavfli URL" };
-    if (containsRiskyKeyword(collectContext(el, url))) return { block: true, reason: "Riskli kontekst" };
+    const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
+    const pageContext = collectContext(el, url);
+    if (matchesRiskyUrl(url) || containsRiskyKeyword(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
+    if (containsRiskyKeyword(pageContext)) {
+      // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
+      // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
+      return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
+    }
     return { block: false };
   }
 
@@ -268,7 +302,9 @@
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
+        el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
+        el.currentSrc = BLANK_PIXEL;
       } catch {}
     } else if (el.tagName === "VIDEO") {
       try {
@@ -288,19 +324,40 @@
     }
 
     el.classList.add("ai-radar-blocked");
-    el.style.pointerEvents = "none";
+    Object.assign(el.style, {
+      pointerEvents: "none",
+      opacity: "0",
+      visibility: "hidden",
+    });
+
+    const hardStop = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return false;
+    };
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+      el.addEventListener(evt, hardStop, { capture: true, passive: false });
+    });
 
     // Parent <a> ga ham click bloklash
-    const link = el.closest && el.closest("a");
-    if (link && !link.dataset.aiRadarBlockedLink) {
-      link.dataset.aiRadarBlockedLink = "1";
-      link.dataset.aiRadarOrigHref = link.href;
-      link.removeAttribute("href");
-      link.style.cursor = "not-allowed";
-      const blockClick = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false; };
-      link.addEventListener("click", blockClick, { capture: true });
-      link.addEventListener("mousedown", blockClick, { capture: true });
-      link.addEventListener("auxclick", blockClick, { capture: true });
+    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.parentElement]
+      .filter(Boolean)
+      .filter((node, i, arr) => arr.indexOf(node) === i);
+    blockers.forEach((node) => {
+      if (node.dataset.aiRadarBlockedLink) return;
+      node.dataset.aiRadarBlockedLink = "1";
+      if (node.href) node.dataset.aiRadarOrigHref = node.href;
+      try { node.removeAttribute("href"); } catch {}
+      node.style.cursor = "not-allowed";
+      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+        node.addEventListener(evt, hardStop, { capture: true, passive: false });
+      });
+    });
+
+    const mediaBox = el.closest && el.closest('article, [role="button"], a, div');
+    if (mediaBox && mediaBox !== el) {
+      mediaBox.dataset.aiRadarBlockedContainer = "1";
     }
 
     // Shield overlay
@@ -316,7 +373,9 @@
     shield.style.width = (r.width || el.offsetWidth || 200) + "px";
     shield.style.height = (r.height || el.offsetHeight || 200) + "px";
     // Shield'ga bosish ham hech narsa qilmaydi
-    shield.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); }, { capture: true });
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+      shield.addEventListener(evt, hardStop, { capture: true, passive: false });
+    });
     el.insertAdjacentElement("afterend", shield);
   }
 
@@ -411,10 +470,13 @@
   async function processImage(img) {
     if (paused) return;
     if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
-    const url = img.currentSrc || img.src;
+    const url = mediaUrl(img);
     if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
-    if (img.naturalWidth && img.naturalWidth < MIN_SIZE) return;
-    if (img.naturalHeight && img.naturalHeight < MIN_SIZE) return;
+    if (!img.complete || !img.naturalWidth) {
+      img.addEventListener("load", () => processImage(img), { once: true });
+      return;
+    }
+    if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
     PROCESSING.add(img);
 
@@ -431,7 +493,7 @@
     if (nsfwReady) {
       const r = await classifyLocal(url);
       if (r && r.preds) {
-        const decision = decideFromNsfw(r.preds);
+        const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
           shieldElement(img, decision.reason, "local");
@@ -450,14 +512,15 @@
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 200;
+    const highSkin = !error && skinPct > 0.38 && img.naturalWidth >= 200;
+    const veryHighSkin = !error && skinPct > 0.58 && img.naturalWidth >= 200;
 
     // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
     if (aiDisabled) {
-      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
+      if (veryHighSkin || (VISUAL_RISK_HOST && highSkin && local.suspicious)) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
       return;
     }
-    if (highSkin || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
+    if (highSkin || local.suspicious || (VISUAL_RISK_HOST && img.naturalWidth >= 220 && img.naturalHeight >= 220) || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
         if (block) shieldElement(img, reason, "cloud");
@@ -479,10 +542,14 @@
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
         if (block) shieldElement(video, reason, "cloud");
+        else if (local.suspicious && VISUAL_RISK_HOST) setTimeout(() => captureFrame(video), 800);
       });
     } else {
       enqueue(() => captureFrame(video));
     }
+    video.addEventListener("playing", () => {
+      if (!video.dataset.aiRadarBlocked) setTimeout(() => captureFrame(video), 1200);
+    });
   }
 
   function captureFrameDataUrl(video, w, h) {
@@ -526,7 +593,7 @@
         if (nsfwReady) {
           const r = await classifyLocal(dataUrl, 4000);
           if (r && r.preds) {
-            const decision = decideFromNsfw(r.preds);
+            const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST);
             if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
             if (decision?.confident && !decision.block) { noteLocalApproved(); continue; }
           }
