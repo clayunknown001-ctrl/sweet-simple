@@ -31,18 +31,40 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
 }
 
-chrome.storage.local.get(
-  ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused", "dailyBlocks"],
-  (s) => { render(s); renderSpark(s.dailyBlocks || {}); }
-);
+const STATS_KEYS = ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused", "dailyBlocks", "hostBlocks"];
 
+function refreshAll(s) {
+  render(s);
+  renderSpark(s.dailyBlocks || {});
+  renderHosts(s.hostBlocks || {});
+}
+
+chrome.storage.local.get(STATS_KEYS, refreshAll);
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  chrome.storage.local.get(
-    ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "lastBlock", "paused", "dailyBlocks"],
-    (s) => { render(s); renderSpark(s.dailyBlocks || {}); }
-  );
+  chrome.storage.local.get(STATS_KEYS, refreshAll);
 });
+
+function renderHosts(hb) {
+  const el = document.getElementById("topHosts");
+  if (!el) return;
+  const top = Object.entries(hb).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!top.length) {
+    el.innerHTML = '<div style="color:#64748b;font-size:11px;padding:4px 0;">Hali ma\'lumot yo\'q.</div>';
+    return;
+  }
+  const max = top[0][1];
+  el.innerHTML = top.map(([h, n]) => {
+    const pct = Math.max(6, Math.round((n / max) * 100));
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+      <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cbd5e1;">${escapeHtml(h)}</div>
+      <div style="width:60px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;background:#f87171;"></div>
+      </div>
+      <div style="color:#f87171;font-weight:bold;min-width:24px;text-align:right;">${n}</div>
+    </div>`;
+  }).join("");
+}
 
 function renderSpark(db) {
   const svg = document.getElementById("spark");
