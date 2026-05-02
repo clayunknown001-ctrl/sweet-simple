@@ -470,10 +470,13 @@
   async function processImage(img) {
     if (paused) return;
     if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
-    const url = img.currentSrc || img.src;
+    const url = mediaUrl(img);
     if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
-    if (img.naturalWidth && img.naturalWidth < MIN_SIZE) return;
-    if (img.naturalHeight && img.naturalHeight < MIN_SIZE) return;
+    if (!img.complete || !img.naturalWidth) {
+      img.addEventListener("load", () => processImage(img), { once: true });
+      return;
+    }
+    if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
     PROCESSING.add(img);
 
@@ -490,7 +493,7 @@
     if (nsfwReady) {
       const r = await classifyLocal(url);
       if (r && r.preds) {
-        const decision = decideFromNsfw(r.preds);
+        const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
           shieldElement(img, decision.reason, "local");
@@ -509,14 +512,15 @@
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 200;
+    const highSkin = !error && skinPct > 0.38 && img.naturalWidth >= 200;
+    const veryHighSkin = !error && skinPct > 0.58 && img.naturalWidth >= 200;
 
     // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
     if (aiDisabled) {
-      if (highSkin && skinPct > 0.7) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
+      if (veryHighSkin || (VISUAL_RISK_HOST && highSkin && local.suspicious)) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
       return;
     }
-    if (highSkin || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
+    if (highSkin || local.suspicious || (VISUAL_RISK_HOST && img.naturalWidth >= 220 && img.naturalHeight >= 220) || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
         if (block) shieldElement(img, reason, "cloud");
