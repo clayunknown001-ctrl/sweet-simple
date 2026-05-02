@@ -1,5 +1,7 @@
 .ai-radar-blocked {
-  filter: blur(60px) grayscale(1) brightness(0.3) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  filter: blur(80px) grayscale(1) brightness(0) !important;
   pointer-events: none !important;
   user-select: none !important;
   transition: filter 0.1s ease !important;
@@ -25,6 +27,7 @@
   pointer-events: auto;
   cursor: not-allowed;
   user-select: none;
+  overflow: hidden;
 }
 .ai-radar-shield .icon { font-size: 26px; margin-bottom: 4px; }
 .ai-radar-shield .title {
