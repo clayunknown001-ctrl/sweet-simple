@@ -206,6 +206,20 @@
     try { return decodeURIComponent(String(v || "")).toLowerCase().replace(/\+/g, " "); }
     catch { return String(v || "").toLowerCase(); }
   }
+  function pickFromSrcset(srcset) {
+    if (!srcset) return "";
+    const candidates = String(srcset).split(",").map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
+    return candidates[candidates.length - 1] || "";
+  }
+  function mediaUrl(el) {
+    const srcsetUrl = pickFromSrcset(el.srcset || el.getAttribute?.("srcset"));
+    const attrs = [
+      el.currentSrc, el.src, srcsetUrl,
+      el.getAttribute?.("data-src"), el.getAttribute?.("data-original"),
+      el.getAttribute?.("data-lazy-src"), el.getAttribute?.("data-actualsrc"),
+    ];
+    return attrs.find((u) => u && u !== BLANK_PIXEL && !String(u).startsWith("data:")) || "";
+  }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
     return t && RISKY_KEYWORDS.some((kw) => t.includes(kw));
