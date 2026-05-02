@@ -136,7 +136,7 @@
   const WHITELIST_DOMAINS = [
     "wikipedia.org","wikimedia.org","github.com","stackoverflow.com","stackexchange.com",
     "google.com","gmail.com","drive.google.com","docs.google.com","calendar.google.com",
-    "youtube.com","youtu.be","khanacademy.org","coursera.org","edx.org","udemy.com",
+    "khanacademy.org","coursera.org","edx.org","udemy.com",
     "mit.edu","stanford.edu","harvard.edu","mdn.mozilla.org","developer.mozilla.org",
     "npmjs.com","nodejs.org","python.org","reactjs.org","react.dev","vuejs.org",
     "openai.com","anthropic.com","huggingface.co","kaggle.com","arxiv.org",
@@ -160,8 +160,10 @@
 
   function isWhitelisted() {
     const host = location.hostname.toLowerCase();
-    const all = WHITELIST_DOMAINS.concat(USER_WHITELIST.map((d) => String(d).toLowerCase()));
-    return all.some((d) => host === d || host.endsWith("." + d));
+    const user = USER_WHITELIST.map((d) => String(d).toLowerCase());
+    if (user.some((d) => host === d || host.endsWith("." + d))) return true;
+    if (VISUAL_RISK_HOST) return false;
+    return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
   // Re-evaluate whitelist when user changes it
