@@ -239,7 +239,22 @@
     if (source === "cloud") stats.cloudBlocked++;
     else stats.localBlocked++;
     const lastBlock = { reason: reason || "", host: location.hostname, ts: Date.now() };
-    persistStats({ lastBlock });
+    // 7-kunlik ring buffer (YYYY-MM-DD → count)
+    try {
+      chrome.storage?.local?.get?.(["dailyBlocks"], (s) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const db = (s.dailyBlocks && typeof s.dailyBlocks === "object") ? { ...s.dailyBlocks } : {};
+        db[today] = (db[today] || 0) + 1;
+        // 7 kundan oldingi yozuvlarni tozalash
+        const cutoff = Date.now() - 7 * 86400000;
+        for (const k of Object.keys(db)) {
+          if (new Date(k).getTime() < cutoff) delete db[k];
+        }
+        chrome.storage?.local?.set?.({ ...stats, lastBlock, dailyBlocks: db });
+      });
+    } catch {
+      persistStats({ lastBlock });
+    }
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
 
     if (el.tagName === "IMG") {
