@@ -222,8 +222,14 @@
     return parts.filter(Boolean).join(" ").slice(0, 1000);
   }
   function localBlockDecision(el, url) {
-    if (matchesRiskyUrl(url)) return { block: true, reason: "Xavfli URL" };
-    if (containsRiskyKeyword(collectContext(el, url))) return { block: true, reason: "Riskli kontekst" };
+    const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
+    const pageContext = collectContext(el, url);
+    if (matchesRiskyUrl(url) || containsRiskyKeyword(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
+    if (containsRiskyKeyword(pageContext)) {
+      // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
+      // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
+      return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
+    }
     return { block: false };
   }
 
