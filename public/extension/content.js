@@ -557,10 +557,9 @@
     const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
-    if (aiDisabled) return;
 
     PROCESSING.add(video);
-    if (poster && !poster.startsWith("data:")) {
+    if (poster && !poster.startsWith("data:") && !VISUAL_RISK_HOST) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
         if (block) shieldElement(video, reason, "cloud");
@@ -595,7 +594,7 @@
 
     // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
     if (VISUAL_RISK_HOST) {
-      sampleCurrentVideoFrame(video, W, H);
+      await sampleCurrentVideoFrame(video, W, H);
       return;
     }
 
