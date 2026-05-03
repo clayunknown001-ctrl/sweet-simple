@@ -593,7 +593,13 @@
     const W = Math.min(video.videoWidth || 256, 384);
     const H = Math.min(video.videoHeight || 256, 384);
 
-    // v1.3: 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
+    // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
+    if (VISUAL_RISK_HOST) {
+      sampleCurrentVideoFrame(video, W, H);
+      return;
+    }
+
+    // Oddiy videolarda 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
     const samplePoints = [];
     const dur = isFinite(video.duration) ? video.duration : 0;
     if (dur > 2) {
@@ -631,6 +637,24 @@
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
+  }
+
+  async function sampleCurrentVideoFrame(video, W, H) {
+    try {
+      const dataUrl = captureFrameDataUrl(video, W, H);
+      if (nsfwReady) {
+        const r = await classifyLocal(dataUrl, 4000);
+        if (r && r.preds) {
+          const decision = decideFromNsfw(r.preds, true);
+          if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
+          if (decision?.confident && !decision.block) { noteLocalApproved(); return; }
+        }
+      }
+      if (aiDisabled) return;
+      const b64 = dataUrl.split(",")[1];
+      const { block, reason } = await analyzeBase64(b64);
+      if (block) shieldElement(video, reason, "cloud");
+    } catch {}
   }
 
   const io = new IntersectionObserver((entries) => {
