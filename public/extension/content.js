@@ -234,16 +234,31 @@
       url, document.title, el.alt, el.title,
       el.getAttribute && el.getAttribute("aria-label"),
       el.closest && el.closest("a")?.href,
-      el.closest && el.closest("a")?.textContent,
-      el.parentElement?.textContent?.slice(0, 200),
+      el.closest && el.closest("a")?.textContent?.slice(0, 80),
+      el.closest && el.closest("article")?.textContent?.slice(0, 160),
     ];
     return parts.filter(Boolean).join(" ").slice(0, 1000);
+  }
+  function hasStrongMediaRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return [
+      "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
+      "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
+      "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
+      "yalang'och","yalangoch","behayo","jinsi a'zo"
+    ].some((kw) => t.includes(kw));
+  }
+  function hasSoftMediaRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","бикини","купальник","декольте","ichki kiyim","kupalnik"].some((kw) => t.includes(kw));
   }
   function localBlockDecision(el, url) {
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
-    if (matchesRiskyUrl(url) || containsRiskyKeyword(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
-    if (containsRiskyKeyword(pageContext)) {
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
+    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext)) {
       // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
       // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
       return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
