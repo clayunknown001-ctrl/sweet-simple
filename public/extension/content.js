@@ -14,8 +14,9 @@
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 3;
-  const CACHE_KEY = "__ai_radar_cache_v3__";
+  const MAX_CONCURRENT = 2;
+  // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
+  const CACHE_KEY = "__ai_radar_cache_v4__";
   const PROCESSING = new WeakSet();
   const QUEUE = [];
   let active = 0;
@@ -96,12 +97,13 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    if (porn > 0.45 || hentai > 0.45) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
-    if (sexy > 0.72 && neutral < 0.45) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
-    if (strict && sexy > 0.55 && neutral < 0.55) return { block: true, reason: "Riskli vizual kontent (lokal AI)", confident: true };
+    if (porn > 0.42 || hentai > 0.42) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (sexy > 0.78 && neutral < 0.38) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
+    // Social feedlarda faqat "sexy" signali bilan hamma reels/pin'ni yopmaymiz — shubhali bo'lsa cloud tekshiradi.
+    if (strict && sexy > 0.68 && neutral < 0.42) return { block: false, confident: false, suspicious: true };
     if (neutral > 0.88 && sexy < 0.14 && porn + hentai < 0.12) return { block: false, confident: true };
     if (drawing > 0.82 && porn + hentai + sexy < 0.25) return { block: false, confident: true };
-    if (sexy > 0.32 || porn + hentai > 0.18) return { block: false, confident: false, suspicious: true };
+    if (sexy > 0.30 || porn + hentai > 0.16) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: !strict, suspicious: strict };
   }
 
