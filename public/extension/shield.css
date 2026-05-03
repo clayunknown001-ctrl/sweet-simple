@@ -7,6 +7,9 @@
   transition: filter 0.1s ease !important;
   cursor: not-allowed !important;
 }
+.ai-radar-container-blocked {
+  pointer-events: none !important;
+}
 .ai-radar-shield {
   position: absolute;
   inset: 0;
@@ -28,6 +31,10 @@
   cursor: not-allowed;
   user-select: none;
   overflow: hidden;
+}
+.ai-radar-container-blocked > .ai-radar-shield,
+.ai-radar-shield {
+  pointer-events: auto !important;
 }
 .ai-radar-shield .icon { font-size: 26px; margin-bottom: 4px; }
 .ai-radar-shield .title {
