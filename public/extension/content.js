@@ -541,7 +541,8 @@
       if (veryHighSkin || (VISUAL_RISK_HOST && highSkin && local.suspicious)) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
       return;
     }
-    if (highSkin || local.suspicious || (VISUAL_RISK_HOST && img.naturalWidth >= 220 && img.naturalHeight >= 220) || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
+    const shouldUseCloud = local.suspicious || highSkin || (!nsfwReady && !VISUAL_RISK_HOST && img.naturalWidth >= 360 && img.naturalHeight >= 360);
+    if (shouldUseCloud) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
         if (block) shieldElement(img, reason, "cloud");
@@ -569,7 +570,10 @@
       enqueue(() => captureFrame(video));
     }
     video.addEventListener("playing", () => {
-      if (!video.dataset.aiRadarBlocked) setTimeout(() => captureFrame(video), 1200);
+      if (!video.dataset.aiRadarBlocked) {
+        setTimeout(() => captureFrame(video), 800);
+        setTimeout(() => captureFrame(video), 2400);
+      }
     });
   }
 
