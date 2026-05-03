@@ -14,8 +14,9 @@
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 3;
-  const CACHE_KEY = "__ai_radar_cache_v3__";
+  const MAX_CONCURRENT = 2;
+  // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
+  const CACHE_KEY = "__ai_radar_cache_v4__";
   const PROCESSING = new WeakSet();
   const QUEUE = [];
   let active = 0;
@@ -96,12 +97,13 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    if (porn > 0.45 || hentai > 0.45) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
-    if (sexy > 0.72 && neutral < 0.45) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
-    if (strict && sexy > 0.55 && neutral < 0.55) return { block: true, reason: "Riskli vizual kontent (lokal AI)", confident: true };
+    if (porn > 0.42 || hentai > 0.42) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (sexy > 0.78 && neutral < 0.38) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
+    // Social feedlarda faqat "sexy" signali bilan hamma reels/pin'ni yopmaymiz — shubhali bo'lsa cloud tekshiradi.
+    if (strict && sexy > 0.68 && neutral < 0.42) return { block: false, confident: false, suspicious: true };
     if (neutral > 0.88 && sexy < 0.14 && porn + hentai < 0.12) return { block: false, confident: true };
     if (drawing > 0.82 && porn + hentai + sexy < 0.25) return { block: false, confident: true };
-    if (sexy > 0.32 || porn + hentai > 0.18) return { block: false, confident: false, suspicious: true };
+    if (sexy > 0.30 || porn + hentai > 0.16) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: !strict, suspicious: strict };
   }
 
@@ -232,16 +234,31 @@
       url, document.title, el.alt, el.title,
       el.getAttribute && el.getAttribute("aria-label"),
       el.closest && el.closest("a")?.href,
-      el.closest && el.closest("a")?.textContent,
-      el.parentElement?.textContent?.slice(0, 200),
+      el.closest && el.closest("a")?.textContent?.slice(0, 80),
+      el.closest && el.closest("article")?.textContent?.slice(0, 160),
     ];
     return parts.filter(Boolean).join(" ").slice(0, 1000);
+  }
+  function hasStrongMediaRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return [
+      "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
+      "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
+      "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
+      "yalang'och","yalangoch","behayo","jinsi a'zo"
+    ].some((kw) => t.includes(kw));
+  }
+  function hasSoftMediaRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","бикини","купальник","декольте","ichki kiyim","kupalnik"].some((kw) => t.includes(kw));
   }
   function localBlockDecision(el, url) {
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
-    if (matchesRiskyUrl(url) || containsRiskyKeyword(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
-    if (containsRiskyKeyword(pageContext)) {
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
+    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext)) {
       // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
       // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
       return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
@@ -268,6 +285,7 @@
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
+    const rectBefore = el.getBoundingClientRect();
     blockedCount++;
     stats.totalBlocked = blockedCount;
     if (source === "cloud") stats.cloudBlocked++;
@@ -341,7 +359,7 @@
     });
 
     // Parent <a> ga ham click bloklash
-    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.parentElement]
+    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.closest && el.closest('[role="button"]'), el.parentElement]
       .filter(Boolean)
       .filter((node, i, arr) => arr.indexOf(node) === i);
     blockers.forEach((node) => {
@@ -358,6 +376,7 @@
     const mediaBox = el.closest && el.closest('article, [role="button"], a, div');
     if (mediaBox && mediaBox !== el) {
       mediaBox.dataset.aiRadarBlockedContainer = "1";
+      mediaBox.classList.add("ai-radar-container-blocked");
     }
 
     // Shield overlay
@@ -369,9 +388,11 @@
     shield.className = "ai-radar-shield";
     shield.innerHTML = '<div class="icon">🛡️</div><div class="title">Bloklandi</div><div class="reason"></div>';
     shield.querySelector(".reason").textContent = (reason || "Zararli kontent").slice(0, 100);
-    const r = el.getBoundingClientRect();
-    shield.style.width = (r.width || el.offsetWidth || 200) + "px";
-    shield.style.height = (r.height || el.offsetHeight || 200) + "px";
+    const w = rectBefore.width || el.offsetWidth || 200;
+    const h = rectBefore.height || el.offsetHeight || 200;
+    Object.assign(el.style, { width: w + "px", height: h + "px" });
+    shield.style.width = w + "px";
+    shield.style.height = h + "px";
     // Shield'ga bosish ham hech narsa qilmaydi
     ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
       shield.addEventListener(evt, hardStop, { capture: true, passive: false });
@@ -520,7 +541,8 @@
       if (veryHighSkin || (VISUAL_RISK_HOST && highSkin && local.suspicious)) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
       return;
     }
-    if (highSkin || local.suspicious || (VISUAL_RISK_HOST && img.naturalWidth >= 220 && img.naturalHeight >= 220) || (img.naturalWidth >= 300 && img.naturalHeight >= 300 && nsfwReady === false)) {
+    const shouldUseCloud = local.suspicious || highSkin || (!nsfwReady && !VISUAL_RISK_HOST && img.naturalWidth >= 360 && img.naturalHeight >= 360);
+    if (shouldUseCloud) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
         if (block) shieldElement(img, reason, "cloud");
@@ -535,10 +557,9 @@
     const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
-    if (aiDisabled) return;
 
     PROCESSING.add(video);
-    if (poster && !poster.startsWith("data:")) {
+    if (poster && !poster.startsWith("data:") && !VISUAL_RISK_HOST) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
         if (block) shieldElement(video, reason, "cloud");
@@ -548,7 +569,10 @@
       enqueue(() => captureFrame(video));
     }
     video.addEventListener("playing", () => {
-      if (!video.dataset.aiRadarBlocked) setTimeout(() => captureFrame(video), 1200);
+      if (!video.dataset.aiRadarBlocked) {
+        setTimeout(() => captureFrame(video), 800);
+        setTimeout(() => captureFrame(video), 2400);
+      }
     });
   }
 
@@ -568,7 +592,13 @@
     const W = Math.min(video.videoWidth || 256, 384);
     const H = Math.min(video.videoHeight || 256, 384);
 
-    // v1.3: 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
+    // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
+    if (VISUAL_RISK_HOST) {
+      await sampleCurrentVideoFrame(video, W, H);
+      return;
+    }
+
+    // Oddiy videolarda 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
     const samplePoints = [];
     const dur = isFinite(video.duration) ? video.duration : 0;
     if (dur > 2) {
@@ -606,6 +636,24 @@
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
+  }
+
+  async function sampleCurrentVideoFrame(video, W, H) {
+    try {
+      const dataUrl = captureFrameDataUrl(video, W, H);
+      if (nsfwReady) {
+        const r = await classifyLocal(dataUrl, 4000);
+        if (r && r.preds) {
+          const decision = decideFromNsfw(r.preds, true);
+          if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
+          if (decision?.confident && !decision.block) { noteLocalApproved(); return; }
+        }
+      }
+      if (aiDisabled) return;
+      const b64 = dataUrl.split(",")[1];
+      const { block, reason } = await analyzeBase64(b64);
+      if (block) shieldElement(video, reason, "cloud");
+    } catch {}
   }
 
   const io = new IntersectionObserver((entries) => {

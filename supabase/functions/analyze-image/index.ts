@@ -69,13 +69,14 @@ Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
 CRITICAL CALIBRATION:
-- Default to APPROVE for: cars, food, nature, animals, architecture, tech, fully-clothed people in normal contexts, charts, text, UI screenshots, art (non-nude), educational content, news, sports (non-arousal-framed)
-- Only BLOCK when you can clearly identify a lust/arousal trigger combination OR violence/harm category above.
-- "Clothed person" alone is NOT a reason to block. Look at framing, pose, intent.
-- When uncertain about a clothed person in a normal context → APPROVE.
-- When the framing is clearly engineered for arousal → BLOCK with high confidence.
+- Judge the visible image/frame itself. Do NOT block an entire social feed, Reels page, Pinterest grid, or normal image because of the platform/source.
+- Default to APPROVE for: cars, food, nature, animals, architecture, tech, fully-clothed people in normal contexts, charts, text, UI screenshots, art (non-nude), educational content, news, sports (non-arousal-framed), product photos, normal Pinterest pins.
+- BLOCK when the visible frame clearly contains: nudity, underwear/lingerie, exposed intimate body focus, sexual/seductive pose, twerking/grinding, pornographic text, gore, active violence, self-harm, hard drugs, hate symbols.
+- "Clothed person" alone is NOT a reason to block. A normal selfie, family photo, fashion/product image, or ordinary reel frame is SAFE unless the visible framing is sexualized.
+- When uncertain about a normal clothed person/object/product → APPROVE.
+- When the framing is clearly engineered for arousal or harm is visible → BLOCK.
 
-Return confidence between 0 and 1. Only block if confidence > 0.65.`;
+Return confidence between 0 and 1. Only set should_block=true when the visible content itself contains a concrete block trigger.`;
 
   return fast
     ? `${common}\nRespond quickly with a binary decision.`
@@ -266,8 +267,8 @@ serve(async (req) => {
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
     const userText = fast
-      ? "Apply the calibration rules. Return APPROVE for normal/clothed/non-arousal-framed content. Only BLOCK with confidence>0.65 when arousal/harm triggers are clearly present."
-      : "Analyze with the 4-step framework. Default to APPROVE; block only with strong evidence.";
+      ? "Judge only the visible image/frame. APPROVE normal Pinterest pins, normal clothed people, products, cars, food, UI, and ordinary reels. BLOCK only if a concrete sexual/violent/harm trigger is visibly present."
+      : "Analyze only the visible image/frame with the 4-step framework. Do not infer from platform/feed; block only visible sexualized or harmful content.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -323,7 +324,10 @@ serve(async (req) => {
 
     // Confidence-gated blocking — protects against false positives
     const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
-    if (analysis.should_block && conf < 0.65) {
+    const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
+    const hardRisk = /nud|porn|sex|lingerie|underwear|hentai|gore|violence|weapon|self-harm|suicide|drug|hate|behayo|zo'ravon|yalang/.test(categoryText);
+    const minBlockConfidence = hardRisk ? 0.55 : 0.68;
+    if (analysis.should_block && conf < minBlockConfidence) {
       analysis.should_block = false;
       analysis.block_reason = "Low confidence — approved";
     }
