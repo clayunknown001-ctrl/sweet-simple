@@ -285,6 +285,7 @@
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
+    const rectBefore = el.getBoundingClientRect();
     blockedCount++;
     stats.totalBlocked = blockedCount;
     if (source === "cloud") stats.cloudBlocked++;
@@ -358,7 +359,7 @@
     });
 
     // Parent <a> ga ham click bloklash
-    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.parentElement]
+    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.closest && el.closest('[role="button"]'), el.parentElement]
       .filter(Boolean)
       .filter((node, i, arr) => arr.indexOf(node) === i);
     blockers.forEach((node) => {
@@ -375,6 +376,7 @@
     const mediaBox = el.closest && el.closest('article, [role="button"], a, div');
     if (mediaBox && mediaBox !== el) {
       mediaBox.dataset.aiRadarBlockedContainer = "1";
+      mediaBox.classList.add("ai-radar-container-blocked");
     }
 
     // Shield overlay
@@ -386,9 +388,11 @@
     shield.className = "ai-radar-shield";
     shield.innerHTML = '<div class="icon">🛡️</div><div class="title">Bloklandi</div><div class="reason"></div>';
     shield.querySelector(".reason").textContent = (reason || "Zararli kontent").slice(0, 100);
-    const r = el.getBoundingClientRect();
-    shield.style.width = (r.width || el.offsetWidth || 200) + "px";
-    shield.style.height = (r.height || el.offsetHeight || 200) + "px";
+    const w = rectBefore.width || el.offsetWidth || 200;
+    const h = rectBefore.height || el.offsetHeight || 200;
+    Object.assign(el.style, { width: w + "px", height: h + "px" });
+    shield.style.width = w + "px";
+    shield.style.height = h + "px";
     // Shield'ga bosish ham hech narsa qilmaydi
     ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
       shield.addEventListener(evt, hardStop, { capture: true, passive: false });
