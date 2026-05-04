@@ -30,8 +30,14 @@
     try {
       if (!window.tf) await loadScript(TFJS_URL);
       if (!window.nsfwjs) await loadScript(NSFWJS_URL);
-      // MobileNetV2, ~4.2MB
-      const model = await window.nsfwjs.load("https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/example/nsfw_demo/models/mobilenet_v2/");
+      // Default MobileNetV2 (nsfwjs avtomatik to'g'ri URL'ni topadi)
+      let model;
+      try {
+        model = await window.nsfwjs.load();
+      } catch (e1) {
+        // Fallback: ishonchli mirror
+        model = await window.nsfwjs.load("https://nsfw-model-cdn.netlify.app/mobilenet_v2/");
+      }
       window.__AI_RADAR_NSFW__.model = model;
       window.__AI_RADAR_NSFW__.ready = true;
       window.dispatchEvent(new CustomEvent("ai-radar-nsfw-ready"));
