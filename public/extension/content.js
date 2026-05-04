@@ -375,11 +375,8 @@
       });
     });
 
-    const mediaBox = el.closest && el.closest('article, [role="button"], a, div');
-    if (mediaBox && mediaBox !== el) {
-      mediaBox.dataset.aiRadarBlockedContainer = "1";
-      mediaBox.classList.add("ai-radar-container-blocked");
-    }
+    // v1.9: parent container'ni butunlay bloklamaymiz — Pinterest/Instagram grid scroll qilolmay qoladi.
+    // Faqat to'g'ridan-to'g'ri <a> link bosmaslik kifoya (yuqorida bajarildi).
 
     // Shield overlay
     const parent = el.parentElement;
