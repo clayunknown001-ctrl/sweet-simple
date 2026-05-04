@@ -557,13 +557,19 @@
 
     const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 240;
 
-    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda)
-    if (aiDisabled) return; // skin-tone o'zi blok qilmaydi (false-positive juda ko'p)
-    const shouldUseCloud = local.suspicious || highSkin;
+    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
+    if (aiDisabled) return;
+    const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
-        const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason, "cloud");
+        let result;
+        if (robustData) {
+          const b64 = robustData.split(",")[1];
+          result = await analyzeBase64(b64);
+        } else {
+          result = await analyzeUrl(url);
+        }
+        if (result.block) shieldElement(img, result.reason, "cloud");
       });
     }
   }
