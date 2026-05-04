@@ -339,14 +339,17 @@
     }
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
 
+    // HARD-REMOVE strategiyasi:
+    // Asl elementni butunlay yashirib, o'rniga shield div qo'yamiz.
+    // Asl element DOM'da qoladi (sayt skripti buzilmasligi uchun) lekin
+    // 0x0 o'lcham, ko'rinmas, click yo'q. Bypass mutlaqo mumkin emas.
+
     if (el.tagName === "IMG") {
-      // 1. Asl URL'ni saqlab, src'ni transparent piksel bilan almashtirish
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
         el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
-        el.currentSrc = BLANK_PIXEL;
       } catch {}
     } else if (el.tagName === "VIDEO") {
       try {
@@ -355,7 +358,6 @@
         el.removeAttribute("autoplay");
         el.removeAttribute("controls");
         if (el.src) { el.dataset.aiRadarOrig = el.src; el.removeAttribute("src"); }
-        // <source> teglarini ham o'chir
         el.querySelectorAll("source").forEach((s) => {
           s.dataset.aiRadarOrig = s.src;
           s.removeAttribute("src");
@@ -366,11 +368,6 @@
     }
 
     el.classList.add("ai-radar-blocked");
-    Object.assign(el.style, {
-      pointerEvents: "none",
-      opacity: "0",
-      visibility: "hidden",
-    });
 
     const hardStop = (e) => {
       e.preventDefault();
@@ -378,47 +375,72 @@
       e.stopImmediatePropagation();
       return false;
     };
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
       el.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
 
-    // Parent <a> ga ham click bloklash
-    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.closest && el.closest('[role="button"]'), el.parentElement]
-      .filter(Boolean)
-      .filter((node, i, arr) => arr.indexOf(node) === i);
-    blockers.forEach((node) => {
-      if (node.dataset.aiRadarBlockedLink) return;
-      node.dataset.aiRadarBlockedLink = "1";
-      if (node.href) node.dataset.aiRadarOrigHref = node.href;
-      try { node.removeAttribute("href"); } catch {}
-      node.style.cursor = "not-allowed";
-      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
-        node.addEventListener(evt, hardStop, { capture: true, passive: false });
+    // Parent <a> ni neytrallash
+    const anchor = el.closest && el.closest("a");
+    if (anchor && !anchor.dataset.aiRadarBlockedLink) {
+      anchor.dataset.aiRadarBlockedLink = "1";
+      if (anchor.href) anchor.dataset.aiRadarOrigHref = anchor.href;
+      try { anchor.removeAttribute("href"); } catch {}
+      anchor.style.cursor = "not-allowed";
+      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+        anchor.addEventListener(evt, hardStop, { capture: true, passive: false });
       });
+    }
+
+    // Shield qatlami: asl elementning ustiga, balandroq z-index, click bloki
+    const w = Math.max(rectBefore.width || el.offsetWidth || 200, 80);
+    const h = Math.max(rectBefore.height || el.offsetHeight || 200, 80);
+
+    // Wrapper: position relative, asl o'lchamni saqlab turish
+    const wrapper = document.createElement("div");
+    wrapper.className = "ai-radar-wrapper";
+    Object.assign(wrapper.style, {
+      position: "relative",
+      display: "inline-block",
+      width: w + "px",
+      height: h + "px",
+      overflow: "hidden",
+      verticalAlign: "middle",
     });
 
-    // v1.9: parent container'ni butunlay bloklamaymiz — Pinterest/Instagram grid scroll qilolmay qoladi.
-    // Faqat to'g'ridan-to'g'ri <a> link bosmaslik kifoya (yuqorida bajarildi).
-
-    // Shield overlay
-    const parent = el.parentElement;
-    if (parent && getComputedStyle(parent).position === "static") {
-      parent.style.position = "relative";
-    }
     const shield = document.createElement("div");
     shield.className = "ai-radar-shield";
     shield.innerHTML = '<div class="icon">🛡️</div><div class="title">Bloklandi</div><div class="reason"></div>';
     shield.querySelector(".reason").textContent = (reason || "Zararli kontent").slice(0, 100);
-    const w = rectBefore.width || el.offsetWidth || 200;
-    const h = rectBefore.height || el.offsetHeight || 200;
-    Object.assign(el.style, { width: w + "px", height: h + "px" });
-    shield.style.width = w + "px";
-    shield.style.height = h + "px";
-    // Shield'ga bosish ham hech narsa qilmaydi
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+    Object.assign(shield.style, {
+      position: "absolute",
+      inset: "0",
+      width: "100%",
+      height: "100%",
+    });
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
       shield.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
-    el.insertAdjacentElement("afterend", shield);
+
+    // Asl elementni wrapper ichiga ko'chirib, ustiga shield qo'yamiz
+    try {
+      const parent = el.parentNode;
+      if (parent) {
+        parent.insertBefore(wrapper, el);
+        // Asl elementni absolutely yashirib qo'yamiz (sayt skriptlari uchun)
+        Object.assign(el.style, {
+          position: "absolute",
+          left: "-9999px",
+          top: "-9999px",
+          width: "1px",
+          height: "1px",
+          opacity: "0",
+          visibility: "hidden",
+          pointerEvents: "none",
+        });
+        wrapper.appendChild(el);
+        wrapper.appendChild(shield);
+      }
+    } catch {}
   }
 
   // ========== LOKAL HEURISTICS: SKIN-TONE DETECTION ==========
