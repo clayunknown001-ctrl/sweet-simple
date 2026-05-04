@@ -532,15 +532,11 @@
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    const highSkin = !error && skinPct > 0.38 && img.naturalWidth >= 200;
-    const veryHighSkin = !error && skinPct > 0.58 && img.naturalWidth >= 200;
+    const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 240;
 
-    // 5. Cloud AI (faqat shubhali holatlarda, kvota tejash uchun)
-    if (aiDisabled) {
-      if (veryHighSkin || (VISUAL_RISK_HOST && highSkin && local.suspicious)) shieldElement(img, "Ko'p ochiq teri (lokal)", "local");
-      return;
-    }
-    const shouldUseCloud = local.suspicious || highSkin || (!nsfwReady && !VISUAL_RISK_HOST && img.naturalWidth >= 360 && img.naturalHeight >= 360);
+    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda)
+    if (aiDisabled) return; // skin-tone o'zi blok qilmaydi (false-positive juda ko'p)
+    const shouldUseCloud = local.suspicious || highSkin;
     if (shouldUseCloud) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(url);
