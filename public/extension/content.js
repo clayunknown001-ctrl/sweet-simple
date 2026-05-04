@@ -16,7 +16,7 @@
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 2;
   // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
-  const CACHE_KEY = "__ai_radar_cache_v5__";
+  const CACHE_KEY = "__ai_radar_cache_v6__";
   const PROCESSING = new WeakSet();
   const QUEUE = [];
   let active = 0;
@@ -531,10 +531,12 @@
 
     img.classList.add("ai-radar-scanning");
 
-    // 3. LOKAL NSFW MODEL (NSFWJS) — eng aniq, tekin, cheksiz
+    // 3. LOKAL NSFW MODEL (NSFWJS) — CORS bypass bilan
+    let robustData = null;
     if (nsfwReady) {
-      const r = await classifyLocal(url);
+      const r = await classifyRobust(url);
       if (r && r.preds) {
+        if (r.dataUrl) robustData = r.dataUrl; // background fetch ishlatildi
         const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
@@ -544,9 +546,8 @@
         if (decision?.confident && !decision.block) {
           img.classList.remove("ai-radar-scanning");
           noteLocalApproved();
-          return; // aniq xavfsiz — cloud'ga yuborilmaydi
+          return;
         }
-        // shubhali → cloud'ga o'tadi
       }
     }
 
