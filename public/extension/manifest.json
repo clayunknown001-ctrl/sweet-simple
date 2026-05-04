@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "AI Radar — Real-Time Content Shield",
-  "version": "1.9.0",
-  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v1.9: false-positive sezilarli kamaydi (Pinterest, Instagram).",
+  "version": "2.0.0",
+  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.0: CORS bypass, hard-remove blok, agressiv aniqlash.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
