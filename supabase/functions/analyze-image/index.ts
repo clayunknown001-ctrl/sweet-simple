@@ -254,16 +254,13 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = fast
-      ? "Judge only the visible image/frame. APPROVE normal Pinterest pins, normal clothed people, products, cars, food, UI, and ordinary reels. BLOCK only if a concrete sexual/violent/harm trigger is visibly present."
-      : "Analyze only the visible image/frame with the 4-step framework. Do not infer from platform/feed; block only visible sexualized or harmful content.";
+    const userText = "Analyze the visible image. Default = APPROVE. Block ONLY if you can name a specific trigger from the BLOCK list (genitals/nipples, sex act, lingerie+sexual pose, hentai, gore, active violence, self-harm, hard drug use, hate symbol, porn text). Normal selfies, fashion, food, products, scenery, sports, reels, Pinterest pins = SAFE. If unsure → should_block=false.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
     let providerUsed = "none";
     let firstError: any = null;
 
-    // Try Google first (free but limited)
     if (GEMINI_API_KEY) {
       try {
         analysis = await callGoogleAIStudio({
@@ -278,7 +275,6 @@ serve(async (req) => {
       }
     }
 
-    // Fallback to Lovable Gateway
     if (!analysis && LOVABLE_API_KEY) {
       const imageContent = image_base64
         ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
@@ -310,15 +306,17 @@ serve(async (req) => {
       });
     }
 
-    // Confidence-gated blocking — protects against false positives
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
+    // Strict confidence gate — only block on high-confidence HARD triggers
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.5;
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardRisk = /nud|porn|sex|lingerie|underwear|hentai|gore|violence|weapon|self-harm|suicide|drug|hate|behayo|zo'ravon|yalang/.test(categoryText);
-    const minBlockConfidence = hardRisk ? 0.55 : 0.68;
-    if (analysis.should_block && conf < minBlockConfidence) {
-      analysis.should_block = false;
-      analysis.block_reason = "Low confidence — approved";
+    const hardTrigger = /nud|porn|genital|nipple|sex act|penetrat|hentai|gore|blood|wound|corpse|weapon|self-harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang/.test(categoryText);
+    if (analysis.should_block) {
+      if (!hardTrigger || conf < 0.7) {
+        analysis.should_block = false;
+        analysis.block_reason = "Approved — no concrete harm trigger";
+      }
     }
+
 
     return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
