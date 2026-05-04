@@ -16,7 +16,7 @@
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 2;
   // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
-  const CACHE_KEY = "__ai_radar_cache_v4__";
+  const CACHE_KEY = "__ai_radar_cache_v5__";
   const PROCESSING = new WeakSet();
   const QUEUE = [];
   let active = 0;
