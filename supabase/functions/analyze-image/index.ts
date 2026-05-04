@@ -62,24 +62,14 @@ Most images on the internet are SAFE. Approve unless you can point to a concrete
 
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
-  const common = `You are a content moderation AI for a browser radar that protects users from harmful/arousing content.
+  const common = `You are a strict-but-fair content moderation AI. Your priority: ZERO false positives. Most images are SAFE.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
-CRITICAL CALIBRATION:
-- Judge the visible image/frame itself. Do NOT block an entire social feed, Reels page, Pinterest grid, or normal image because of the platform/source.
-- Default to APPROVE for: cars, food, nature, animals, architecture, tech, fully-clothed people in normal contexts, charts, text, UI screenshots, art (non-nude), educational content, news, sports (non-arousal-framed), product photos, normal Pinterest pins.
-- BLOCK when the visible frame clearly contains: nudity, underwear/lingerie, exposed intimate body focus, sexual/seductive pose, twerking/grinding, pornographic text, gore, active violence, self-harm, hard drugs, hate symbols.
-- "Clothed person" alone is NOT a reason to block. A normal selfie, family photo, fashion/product image, or ordinary reel frame is SAFE unless the visible framing is sexualized.
-- When uncertain about a normal clothed person/object/product → APPROVE.
-- When the framing is clearly engineered for arousal or harm is visible → BLOCK.
-
-Return confidence between 0 and 1. Only set should_block=true when the visible content itself contains a concrete block trigger.`;
-
-  return fast
-    ? `${common}\nRespond quickly with a binary decision.`
-    : `${common}\nApply the full 4-step reasoning framework before deciding.`;
+Return JSON via the function. Default should_block=false. Only set true when one of the 10 specific triggers is visibly present with confidence >= 0.7.`;
+  return fast ? common : common + "\nThink step-by-step before deciding.";
 }
+
 
 const fastParams = {
   type: "object",
