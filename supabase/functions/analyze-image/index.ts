@@ -246,7 +246,7 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = "Analyze the visible image. Default = APPROVE. Block ONLY if you can name a specific trigger from the BLOCK list (genitals/nipples, sex act, lingerie+sexual pose, hentai, gore, active violence, self-harm, hard drug use, hate symbol, porn text). Normal selfies, fashion, food, products, scenery, sports, reels, Pinterest pins = SAFE. If unsure → should_block=false.";
+    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, heavy sexual framing (lingerie posed sexually, OnlyFans-style), gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE: normal selfies, fashion (even revealing in fashion context), products, food, scenery, sports, kissing (clothed), dance in clothes. Be decisive — real porn/gore must be blocked.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -298,14 +298,16 @@ serve(async (req) => {
       });
     }
 
-    // Strict confidence gate — only block on high-confidence HARD triggers
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.5;
+    // Soft confidence gate — modelni hurmat qilamiz, lekin past confidence'da
+    // tekshirib ko'ramiz. Hard trigger bo'lsa 0.55, aks holda 0.65 yetarli.
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.6;
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardTrigger = /nud|porn|genital|nipple|sex act|penetrat|hentai|gore|blood|wound|corpse|weapon|self-harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang/.test(categoryText);
+    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive/.test(categoryText);
     if (analysis.should_block) {
-      if (!hardTrigger || conf < 0.7) {
+      const minConf = hardTrigger ? 0.55 : 0.65;
+      if (conf < minConf) {
         analysis.should_block = false;
-        analysis.block_reason = "Approved — no concrete harm trigger";
+        analysis.block_reason = "Approved — low confidence";
       }
     }
 
