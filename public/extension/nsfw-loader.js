@@ -51,6 +51,7 @@
   }
 
   // Bridge: content.js postMessage orqali so'raydi
+  // src ham URL, ham data:URL bo'lishi mumkin (background fetch natijasi)
   window.addEventListener("message", async (ev) => {
     if (!ev.data || ev.source !== window) return;
     const msg = ev.data;
@@ -63,13 +64,14 @@
         return;
       }
       const img = new Image();
-      img.crossOrigin = "anonymous";
+      // data: URL bo'lsa CORS shart emas; tashqi URL bo'lsa anonymous urinib ko'ramiz
+      if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
       img.referrerPolicy = "no-referrer";
       const loaded = await new Promise((resolve) => {
         img.onload = () => resolve(true);
         img.onerror = () => resolve(false);
         img.src = src;
-        setTimeout(() => resolve(false), 5000);
+        setTimeout(() => resolve(false), 6000);
       });
       if (!loaded || !img.naturalWidth) {
         window.postMessage({ __aiRadar: "result", id, error: "load-failed" }, "*");

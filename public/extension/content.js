@@ -16,7 +16,7 @@
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 2;
   // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
-  const CACHE_KEY = "__ai_radar_cache_v5__";
+  const CACHE_KEY = "__ai_radar_cache_v6__";
   const PROCESSING = new WeakSet();
   const QUEUE = [];
   let active = 0;
@@ -70,13 +70,36 @@
     }
   });
   window.addEventListener("ai-radar-nsfw-ready", () => { nsfwReady = true; });
-  function classifyLocal(src, timeoutMs = 6000) {
+  function classifyLocal(src, timeoutMs = 7000) {
     return new Promise((resolve) => {
       const id = ++nsfwReqId;
       const timer = setTimeout(() => { nsfwPending.delete(id); resolve({ error: "timeout" }); }, timeoutMs);
       nsfwPending.set(id, (m) => { clearTimeout(timer); resolve(m); });
       window.postMessage({ __aiRadar: "classify", id, src }, "*");
     });
+  }
+  function fetchImageViaBackground(url) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
+          if (chrome.runtime?.lastError) return resolve(null);
+          if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
+        });
+      } catch { resolve(null); }
+    });
+  }
+  // Avval to'g'ridan-to'g'ri, bo'lmasa background fetch (CORS bypass)
+  async function classifyRobust(url, timeoutMs = 7000) {
+    let r = await classifyLocal(url, timeoutMs);
+    if (r && r.preds) return r;
+    if (!url.startsWith("data:")) {
+      const dataUrl = await fetchImageViaBackground(url);
+      if (dataUrl) {
+        r = await classifyLocal(dataUrl, timeoutMs);
+        if (r && r.preds) return { ...r, dataUrl };
+      }
+    }
+    return r;
   }
   function hostMatches(domains) {
     const host = location.hostname.toLowerCase().replace(/^www\./, "");
@@ -88,9 +111,7 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
 
-  // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
-  // v1.9: false-positive minimal — faqat aniq porn/hentai signali blok qiladi.
-  // "Sexy" o'zi hech qachon blok qilmaydi (bikini, fashion, selfie false-positive ko'p).
+  // v2.0: balanslangan threshold'lar — visual-risk saytlarda strictroq.
   function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -98,14 +119,15 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    // Faqat aniq porn/hentai → blok
-    if (porn > 0.65) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
-    if (hentai > 0.7) return { block: true, reason: "Hentai (lokal AI)", confident: true };
-    // Aniq xavfsiz
-    if (neutral > 0.75 && porn + hentai < 0.1) return { block: false, confident: true };
+    const pornT = strict ? 0.45 : 0.55;
+    const hentaiT = strict ? 0.5 : 0.6;
+    if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
+    if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
+    if (porn + hentai > 0.55) return { block: true, reason: "Behayo kontent", confident: true };
+    if (strict && sexy > 0.85 && neutral < 0.15) return { block: true, reason: "Erotik kontent", confident: true };
+    if (neutral > 0.7 && porn + hentai < 0.1) return { block: false, confident: true };
     if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
-    // Shubhali — cloud tekshirsin
-    if (porn + hentai > 0.25 || sexy > 0.6) return { block: false, confident: false, suspicious: true };
+    if (porn + hentai > 0.2 || sexy > 0.55) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: true };
   }
 
@@ -317,14 +339,17 @@
     }
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
 
+    // HARD-REMOVE strategiyasi:
+    // Asl elementni butunlay yashirib, o'rniga shield div qo'yamiz.
+    // Asl element DOM'da qoladi (sayt skripti buzilmasligi uchun) lekin
+    // 0x0 o'lcham, ko'rinmas, click yo'q. Bypass mutlaqo mumkin emas.
+
     if (el.tagName === "IMG") {
-      // 1. Asl URL'ni saqlab, src'ni transparent piksel bilan almashtirish
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
         el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
-        el.currentSrc = BLANK_PIXEL;
       } catch {}
     } else if (el.tagName === "VIDEO") {
       try {
@@ -333,7 +358,6 @@
         el.removeAttribute("autoplay");
         el.removeAttribute("controls");
         if (el.src) { el.dataset.aiRadarOrig = el.src; el.removeAttribute("src"); }
-        // <source> teglarini ham o'chir
         el.querySelectorAll("source").forEach((s) => {
           s.dataset.aiRadarOrig = s.src;
           s.removeAttribute("src");
@@ -344,11 +368,6 @@
     }
 
     el.classList.add("ai-radar-blocked");
-    Object.assign(el.style, {
-      pointerEvents: "none",
-      opacity: "0",
-      visibility: "hidden",
-    });
 
     const hardStop = (e) => {
       e.preventDefault();
@@ -356,47 +375,72 @@
       e.stopImmediatePropagation();
       return false;
     };
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
       el.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
 
-    // Parent <a> ga ham click bloklash
-    const blockers = [el.closest && el.closest("a"), el.closest && el.closest("article"), el.closest && el.closest('[role="button"]'), el.parentElement]
-      .filter(Boolean)
-      .filter((node, i, arr) => arr.indexOf(node) === i);
-    blockers.forEach((node) => {
-      if (node.dataset.aiRadarBlockedLink) return;
-      node.dataset.aiRadarBlockedLink = "1";
-      if (node.href) node.dataset.aiRadarOrigHref = node.href;
-      try { node.removeAttribute("href"); } catch {}
-      node.style.cursor = "not-allowed";
-      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
-        node.addEventListener(evt, hardStop, { capture: true, passive: false });
+    // Parent <a> ni neytrallash
+    const anchor = el.closest && el.closest("a");
+    if (anchor && !anchor.dataset.aiRadarBlockedLink) {
+      anchor.dataset.aiRadarBlockedLink = "1";
+      if (anchor.href) anchor.dataset.aiRadarOrigHref = anchor.href;
+      try { anchor.removeAttribute("href"); } catch {}
+      anchor.style.cursor = "not-allowed";
+      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+        anchor.addEventListener(evt, hardStop, { capture: true, passive: false });
       });
+    }
+
+    // Shield qatlami: asl elementning ustiga, balandroq z-index, click bloki
+    const w = Math.max(rectBefore.width || el.offsetWidth || 200, 80);
+    const h = Math.max(rectBefore.height || el.offsetHeight || 200, 80);
+
+    // Wrapper: position relative, asl o'lchamni saqlab turish
+    const wrapper = document.createElement("div");
+    wrapper.className = "ai-radar-wrapper";
+    Object.assign(wrapper.style, {
+      position: "relative",
+      display: "inline-block",
+      width: w + "px",
+      height: h + "px",
+      overflow: "hidden",
+      verticalAlign: "middle",
     });
 
-    // v1.9: parent container'ni butunlay bloklamaymiz — Pinterest/Instagram grid scroll qilolmay qoladi.
-    // Faqat to'g'ridan-to'g'ri <a> link bosmaslik kifoya (yuqorida bajarildi).
-
-    // Shield overlay
-    const parent = el.parentElement;
-    if (parent && getComputedStyle(parent).position === "static") {
-      parent.style.position = "relative";
-    }
     const shield = document.createElement("div");
     shield.className = "ai-radar-shield";
     shield.innerHTML = '<div class="icon">🛡️</div><div class="title">Bloklandi</div><div class="reason"></div>';
     shield.querySelector(".reason").textContent = (reason || "Zararli kontent").slice(0, 100);
-    const w = rectBefore.width || el.offsetWidth || 200;
-    const h = rectBefore.height || el.offsetHeight || 200;
-    Object.assign(el.style, { width: w + "px", height: h + "px" });
-    shield.style.width = w + "px";
-    shield.style.height = h + "px";
-    // Shield'ga bosish ham hech narsa qilmaydi
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick"].forEach((evt) => {
+    Object.assign(shield.style, {
+      position: "absolute",
+      inset: "0",
+      width: "100%",
+      height: "100%",
+    });
+    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
       shield.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
-    el.insertAdjacentElement("afterend", shield);
+
+    // Asl elementni wrapper ichiga ko'chirib, ustiga shield qo'yamiz
+    try {
+      const parent = el.parentNode;
+      if (parent) {
+        parent.insertBefore(wrapper, el);
+        // Asl elementni absolutely yashirib qo'yamiz (sayt skriptlari uchun)
+        Object.assign(el.style, {
+          position: "absolute",
+          left: "-9999px",
+          top: "-9999px",
+          width: "1px",
+          height: "1px",
+          opacity: "0",
+          visibility: "hidden",
+          pointerEvents: "none",
+        });
+        wrapper.appendChild(el);
+        wrapper.appendChild(shield);
+      }
+    } catch {}
   }
 
   // ========== LOKAL HEURISTICS: SKIN-TONE DETECTION ==========
@@ -509,10 +553,12 @@
 
     img.classList.add("ai-radar-scanning");
 
-    // 3. LOKAL NSFW MODEL (NSFWJS) — eng aniq, tekin, cheksiz
+    // 3. LOKAL NSFW MODEL (NSFWJS) — CORS bypass bilan
+    let robustData = null;
     if (nsfwReady) {
-      const r = await classifyLocal(url);
+      const r = await classifyRobust(url);
       if (r && r.preds) {
+        if (r.dataUrl) robustData = r.dataUrl; // background fetch ishlatildi
         const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
@@ -522,9 +568,8 @@
         if (decision?.confident && !decision.block) {
           img.classList.remove("ai-radar-scanning");
           noteLocalApproved();
-          return; // aniq xavfsiz — cloud'ga yuborilmaydi
+          return;
         }
-        // shubhali → cloud'ga o'tadi
       }
     }
 
@@ -534,13 +579,19 @@
 
     const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 240;
 
-    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda)
-    if (aiDisabled) return; // skin-tone o'zi blok qilmaydi (false-positive juda ko'p)
-    const shouldUseCloud = local.suspicious || highSkin;
+    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
+    if (aiDisabled) return;
+    const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
-        const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason, "cloud");
+        let result;
+        if (robustData) {
+          const b64 = robustData.split(",")[1];
+          result = await analyzeBase64(b64);
+        } else {
+          result = await analyzeUrl(url);
+        }
+        if (result.block) shieldElement(img, result.reason, "cloud");
       });
     }
   }

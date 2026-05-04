@@ -6,67 +6,59 @@ const corsHeaders = {
 };
 
 // =============================================================
-// STRICT VISIBLE-TRIGGER MODERATION
-// Goal: ZERO false positives on normal feeds (Pinterest, Instagram,
-// product pics, selfies, fashion, family photos). BLOCK only when
-// the visible image itself contains a concrete harmful trigger.
+// BALANCED MODERATION
+// Goal: Detect REAL harmful content (porn, gore, violence, hentai)
+// while not blocking normal feeds (selfies, fashion, products,
+// scenery, sports). When in doubt — ERR ON SAFE SIDE on
+// social-media style risky framing.
 // =============================================================
 const reasoningLayer = `
-## DEFAULT = APPROVE
-Most images on the internet are SAFE. Approve unless you can point to a concrete visible trigger from the BLOCK list below.
+## DECISION FRAMEWORK
+You are a content moderation AI. Your job is to protect users from explicit, harmful, or psychologically damaging visual content. Be thorough — missing real porn/gore is WORSE than blocking borderline content.
 
-## SAFE (always approve, do NOT block):
-- Fully clothed people in any normal context (selfies, group photos, fashion shots, portraits)
-- Products, food, drinks, packaging, ads
-- Cars, vehicles, machinery, tech, gadgets, UI screenshots
-- Nature, landscapes, animals, plants, weather
-- Architecture, interiors, art (non-nude), sculpture
-- Charts, diagrams, text, memes (non-sexual), illustrations
-- Sports (athletes in normal sportswear, even tight), fitness in workout context
-- Children's content, cartoons (non-pornographic)
-- Beachwear/swimwear in obvious beach/pool/sport context (not the focus)
-- Fashion model in regular outfit (even crop top, short skirt, low neckline) — fashion context is SAFE
-- Influencer selfie, mirror selfie in normal clothing
-- Pinterest pins of recipes, decor, outfits, crafts
-- Instagram reels of dancing, cooking, comedy, travel
+## BLOCK (set should_block=true) when the image contains ANY of:
+1. **Nudity / pornography**: any visible genitals, anus, female nipples, sex acts, penetration, oral sex, masturbation, ejaculation, cum
+2. **Hentai / animated porn**: drawn/cartoon/anime sexual content, even partial nudity
+3. **Heavily seductive/sexualized poses**: lingerie/underwear shots that are clearly framed for sexual gratification (close-up crotch, spread legs, suggestive bedroom poses, "OnlyFans" style framing)
+4. **Visible suggestive parts as the focus**: extreme cleavage close-up, framing that centers buttocks/breasts as focal point with sexual intent
+5. **Violence / gore**: blood, open wounds, severed body parts, corpses, beheadings, executions, fighting with visible injury
+6. **Self-harm / suicide**: cutting, hanging, suicide methods, glorification
+7. **Hard drug use**: needles in arms, cooking drugs, smoking crack/meth, visible powder/pills with paraphernalia
+8. **Hate symbols in glorifying context**: swastika, KKK, ISIS flags shown approvingly
+9. **Weapons aimed at people / mass shooters posing**
+10. **Pornographic text overlay** or sexual captions clearly visible in image
+
+## APPROVE (should_block=false) for:
+- Fully clothed people in normal contexts (selfies, group photos, portraits)
+- Fashion shoots with normal outfits even if revealing (crop top, low neckline, mini skirt, tight clothing) — fashion context, not sexual framing
+- Bikini/swimwear at beach/pool/sport context where the SETTING is the focus, not the body
+- Athletes in sportswear during sport activity
+- Products, food, ads, packaging
+- Cars, gadgets, machinery, screenshots
+- Nature, animals, landscapes, architecture
+- Memes (non-sexual), illustrations, charts
+- Cartoons (non-pornographic), children's content
 - Religious/cultural attire
+- Kissing (non-explicit, clothed)
+- Dance moves in clothed reels (twerking alone in clothes ≠ block; only if combined with exposed parts)
 
-## BLOCK ONLY IF the image VISIBLY contains:
-1. Exposed genitals, anus, or female nipples (real or drawn)
-2. Visible sexual activity (penetration, oral, masturbation)
-3. Person in lingerie/underwear posed in clearly sexual/seductive way (not catalog product photo)
-4. Hentai/cartoon pornography
-5. Blood, gore, open wounds, corpses, dismemberment
-6. Active violence (someone being attacked/shot/stabbed)
-7. Self-harm imagery (cutting, suicide method)
-8. Hard drug use (needles, smoking crack/meth, visible drug paraphernalia)
-9. Hate symbols (swastika, KKK, ISIS flag in glorifying context)
-10. Pornographic text overlay or sexual on-screen captions
-
-## NOT a reason to block:
-- Bikini at the beach in tourist photo
-- Crop top, miniskirt, low neckline in fashion/social photo
-- Cleavage that's incidental, not the framing focus
-- Tight workout clothes in gym/sport context
-- Shirtless man in beach/sport/fitness context
-- Anyone being "attractive" — attractiveness alone is NOT a block trigger
-- Suggestive pose in mainstream advertising
-- Kissing (non-explicit)
-- Dance moves in reels (twerking alone in clothed context = NOT block; only block if combined with exposed intimate parts)
-
-## CONFIDENCE RULES
-- If you cannot clearly point to one of the 10 BLOCK triggers above → should_block=false
-- If unsure → should_block=false (default approve)
-- Only set should_block=true with confidence >= 0.7 AND a specific trigger from the list
+## CRITICAL RULES
+- If the image is a FASHION/CATALOG product photo of underwear on a model in standard pose → APPROVE
+- If the same underwear shot is FRAMED SEXUALLY (laying in bed, spread legs, suggestive look at camera, close-up of crotch/butt) → BLOCK
+- "Attractive person" alone is NEVER a reason to block
+- Confidence:
+  - For categories 1, 2, 5, 6, 7 (nudity, hentai, gore, self-harm, drugs): block if confidence >= 0.55
+  - For categories 3, 4 (sexualized framing): block if confidence >= 0.7
+  - Other categories: block if confidence >= 0.65
 `;
 
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
-  const common = `You are a strict-but-fair content moderation AI. Your priority: ZERO false positives. Most images are SAFE.
+  const common = `You are a strict but accurate content moderation AI. Block real porn/gore/violence/self-harm/drugs. Approve normal selfies, fashion, products, scenery, sports.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
-Return JSON via the function. Default should_block=false. Only set true when one of the 10 specific triggers is visibly present with confidence >= 0.7.`;
+Return JSON via the function. Be decisive — clear porn/gore = block. Normal photos = approve.`;
   return fast ? common : common + "\nThink step-by-step before deciding.";
 }
 
@@ -254,7 +246,7 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = "Analyze the visible image. Default = APPROVE. Block ONLY if you can name a specific trigger from the BLOCK list (genitals/nipples, sex act, lingerie+sexual pose, hentai, gore, active violence, self-harm, hard drug use, hate symbol, porn text). Normal selfies, fashion, food, products, scenery, sports, reels, Pinterest pins = SAFE. If unsure → should_block=false.";
+    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, heavy sexual framing (lingerie posed sexually, OnlyFans-style), gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE: normal selfies, fashion (even revealing in fashion context), products, food, scenery, sports, kissing (clothed), dance in clothes. Be decisive — real porn/gore must be blocked.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -306,14 +298,16 @@ serve(async (req) => {
       });
     }
 
-    // Strict confidence gate — only block on high-confidence HARD triggers
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.5;
+    // Soft confidence gate — modelni hurmat qilamiz, lekin past confidence'da
+    // tekshirib ko'ramiz. Hard trigger bo'lsa 0.55, aks holda 0.65 yetarli.
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.6;
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardTrigger = /nud|porn|genital|nipple|sex act|penetrat|hentai|gore|blood|wound|corpse|weapon|self-harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang/.test(categoryText);
+    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive/.test(categoryText);
     if (analysis.should_block) {
-      if (!hardTrigger || conf < 0.7) {
+      const minConf = hardTrigger ? 0.55 : 0.65;
+      if (conf < minConf) {
         analysis.should_block = false;
-        analysis.block_reason = "Approved — no concrete harm trigger";
+        analysis.block_reason = "Approved — low confidence";
       }
     }
 
