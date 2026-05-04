@@ -89,7 +89,8 @@
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
 
   // NSFWJS class'lari: Drawing, Hentai, Neutral, Porn, Sexy
-  // v1.7: zararli vizualni agressivroq ushlaydi, lekin Neutral yuqori bo'lsa false-block qilmaydi.
+  // v1.9: false-positive minimal — faqat aniq porn/hentai signali blok qiladi.
+  // "Sexy" o'zi hech qachon blok qilmaydi (bikini, fashion, selfie false-positive ko'p).
   function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -97,14 +98,15 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    if (porn > 0.42 || hentai > 0.42) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
-    if (sexy > 0.78 && neutral < 0.38) return { block: true, reason: "Erotik kontent (lokal AI)", confident: true };
-    // Social feedlarda faqat "sexy" signali bilan hamma reels/pin'ni yopmaymiz — shubhali bo'lsa cloud tekshiradi.
-    if (strict && sexy > 0.68 && neutral < 0.42) return { block: false, confident: false, suspicious: true };
-    if (neutral > 0.88 && sexy < 0.14 && porn + hentai < 0.12) return { block: false, confident: true };
-    if (drawing > 0.82 && porn + hentai + sexy < 0.25) return { block: false, confident: true };
-    if (sexy > 0.30 || porn + hentai > 0.16) return { block: false, confident: false, suspicious: true };
-    return { block: false, confident: !strict, suspicious: strict };
+    // Faqat aniq porn/hentai → blok
+    if (porn > 0.65) return { block: true, reason: "Behayo kontent (lokal AI)", confident: true };
+    if (hentai > 0.7) return { block: true, reason: "Hentai (lokal AI)", confident: true };
+    // Aniq xavfsiz
+    if (neutral > 0.75 && porn + hentai < 0.1) return { block: false, confident: true };
+    if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
+    // Shubhali — cloud tekshirsin
+    if (porn + hentai > 0.25 || sexy > 0.6) return { block: false, confident: false, suspicious: true };
+    return { block: false, confident: true };
   }
 
   // ========== CACHE (localStorage, 7 kun) ==========
