@@ -6,82 +6,70 @@ const corsHeaders = {
 };
 
 // =============================================================
-// BEHAVIORAL REASONING — Neuroscience + Psychology grounded
-// Sources: Kühn & Gallinat 2014, Love et al 2016, PMC7328032,
-// Wikipedia: Effects of pornography, Darwin: From So Simple a Beginning
+// STRICT VISIBLE-TRIGGER MODERATION
+// Goal: ZERO false positives on normal feeds (Pinterest, Instagram,
+// product pics, selfies, fashion, family photos). BLOCK only when
+// the visible image itself contains a concrete harmful trigger.
 // =============================================================
 const reasoningLayer = `
-## NEUROPSYCHOLOGICAL REASONING (apply silently before deciding):
+## DEFAULT = APPROVE
+Most images on the internet are SAFE. Approve unless you can point to a concrete visible trigger from the BLOCK list below.
 
-A. DOPAMINE & REWARD CIRCUIT (Kühn & Gallinat, 2014):
-   Sexual/arousal-engineered imagery triggers excessive dopamine release → over time SHRINKS striatum, reduces gray matter, causes desensitization. Block content engineered to trigger this loop.
+## SAFE (always approve, do NOT block):
+- Fully clothed people in any normal context (selfies, group photos, fashion shots, portraits)
+- Products, food, drinks, packaging, ads
+- Cars, vehicles, machinery, tech, gadgets, UI screenshots
+- Nature, landscapes, animals, plants, weather
+- Architecture, interiors, art (non-nude), sculpture
+- Charts, diagrams, text, memes (non-sexual), illustrations
+- Sports (athletes in normal sportswear, even tight), fitness in workout context
+- Children's content, cartoons (non-pornographic)
+- Beachwear/swimwear in obvious beach/pool/sport context (not the focus)
+- Fashion model in regular outfit (even crop top, short skirt, low neckline) — fashion context is SAFE
+- Influencer selfie, mirror selfie in normal clothing
+- Pinterest pins of recipes, decor, outfits, crafts
+- Instagram reels of dancing, cooking, comedy, travel
+- Religious/cultural attire
 
-B. PREFRONTAL CORTEX HIJACK (PMC7328032, Love et al. 2016):
-   Lust-imagery shuts down judgment within 200ms. User cannot "decide" — the brain is hijacked before conscious thought. Therefore: BLOCK BEFORE the hijack happens, not after.
+## BLOCK ONLY IF the image VISIBLY contains:
+1. Exposed genitals, anus, or female nipples (real or drawn)
+2. Visible sexual activity (penetration, oral, masturbation)
+3. Person in lingerie/underwear posed in clearly sexual/seductive way (not catalog product photo)
+4. Hentai/cartoon pornography
+5. Blood, gore, open wounds, corpses, dismemberment
+6. Active violence (someone being attacked/shot/stabbed)
+7. Self-harm imagery (cutting, suicide method)
+8. Hard drug use (needles, smoking crack/meth, visible drug paraphernalia)
+9. Hate symbols (swastika, KKK, ISIS flag in glorifying context)
+10. Pornographic text overlay or sexual on-screen captions
 
-C. ALGORITHMIC EXPLOITATION:
-   Modern platforms (Instagram, Pinterest, TikTok) optimize for engagement = arousal. Thirst-trap framing, dance reels with hip emphasis, mirror-selfie + minimal clothing, profile photos with seductive intent — these are ENGINEERED to bypass judgment. Block them even when "no nudity".
+## NOT a reason to block:
+- Bikini at the beach in tourist photo
+- Crop top, miniskirt, low neckline in fashion/social photo
+- Cleavage that's incidental, not the framing focus
+- Tight workout clothes in gym/sport context
+- Shirtless man in beach/sport/fitness context
+- Anyone being "attractive" — attractiveness alone is NOT a block trigger
+- Suggestive pose in mainstream advertising
+- Kissing (non-explicit)
+- Dance moves in reels (twerking alone in clothed context = NOT block; only block if combined with exposed intimate parts)
 
-D. EVOLUTIONARY SIGNAL (Darwin):
-   Lust ≠ love ≠ wellbeing. Sexual selection is a mechanism for reproduction, not human flourishing. Don't conflate "natural" with "harmless".
-
-E. CONTEXT MATTERS (avoid false positives):
-   - A clothed woman in a car ad → SAFE
-   - A clothed man giving a presentation → SAFE
-   - A family photo at the beach → SAFE
-   - Children, food, animals (unharmed), nature, tech, architecture → SAFE
-   - A medical/educational diagram → SAFE
-   - A clothed athlete in sports context → SAFE
-
-## DECISION FRAMEWORK (think step by step):
-Step 1: What is literally shown? (objects, people, clothing, pose, setting)
-Step 2: Is the framing engineered for arousal? (camera angle on body parts, mirror selfies, lip emphasis, hip emphasis, suggestive pose)
-Step 3: Is the context legitimate? (commerce, news, education, family, sports, art)
-Step 4: Would showing this hijack the viewer's prefrontal cortex (B above)?
-   → YES = BLOCK
-   → NO = APPROVE
-
-## LUST/AROUSAL TRIGGER COMBINATIONS (BLOCK these):
-- Bikini, lingerie, underwear, swimsuit (any)
-- Cleavage emphasis, midriff exposure, exposed thighs in non-sport context
-- See-through, body-hugging fabric in non-fitness context
-- Mirror selfies + minimal/tight clothing
-- Lip emphasis + eye contact + suggestive pose
-- Hip emphasis, twerking, grinding, seductive dancing
-- Profile photos with seductive framing
-- "Art" nudity (still BLOCK — same brain effect)
-- Beach/pool photos where focus is body, not activity
-- Fitness content where camera lingers on body, not exercise
-
-## VIOLENCE / OTHER HARM (BLOCK):
-- Blood, gore, wounds, corpses
-- Weapons in active/threatening use
-- Drug use, paraphernalia
-- Hate symbols (swastika, etc.)
-- Self-harm, suicide imagery
-- Disturbing/horror imagery
-- Sexual or profane on-screen text
+## CONFIDENCE RULES
+- If you cannot clearly point to one of the 10 BLOCK triggers above → should_block=false
+- If unsure → should_block=false (default approve)
+- Only set should_block=true with confidence >= 0.7 AND a specific trigger from the list
 `;
 
+
 function buildSystemPrompt(fast: boolean, responseLang: string) {
-  const common = `You are a content moderation AI for a browser radar that protects users from harmful/arousing content.
+  const common = `You are a strict-but-fair content moderation AI. Your priority: ZERO false positives. Most images are SAFE.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
-CRITICAL CALIBRATION:
-- Judge the visible image/frame itself. Do NOT block an entire social feed, Reels page, Pinterest grid, or normal image because of the platform/source.
-- Default to APPROVE for: cars, food, nature, animals, architecture, tech, fully-clothed people in normal contexts, charts, text, UI screenshots, art (non-nude), educational content, news, sports (non-arousal-framed), product photos, normal Pinterest pins.
-- BLOCK when the visible frame clearly contains: nudity, underwear/lingerie, exposed intimate body focus, sexual/seductive pose, twerking/grinding, pornographic text, gore, active violence, self-harm, hard drugs, hate symbols.
-- "Clothed person" alone is NOT a reason to block. A normal selfie, family photo, fashion/product image, or ordinary reel frame is SAFE unless the visible framing is sexualized.
-- When uncertain about a normal clothed person/object/product → APPROVE.
-- When the framing is clearly engineered for arousal or harm is visible → BLOCK.
-
-Return confidence between 0 and 1. Only set should_block=true when the visible content itself contains a concrete block trigger.`;
-
-  return fast
-    ? `${common}\nRespond quickly with a binary decision.`
-    : `${common}\nApply the full 4-step reasoning framework before deciding.`;
+Return JSON via the function. Default should_block=false. Only set true when one of the 10 specific triggers is visibly present with confidence >= 0.7.`;
+  return fast ? common : common + "\nThink step-by-step before deciding.";
 }
+
 
 const fastParams = {
   type: "object",
@@ -266,16 +254,13 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = fast
-      ? "Judge only the visible image/frame. APPROVE normal Pinterest pins, normal clothed people, products, cars, food, UI, and ordinary reels. BLOCK only if a concrete sexual/violent/harm trigger is visibly present."
-      : "Analyze only the visible image/frame with the 4-step framework. Do not infer from platform/feed; block only visible sexualized or harmful content.";
+    const userText = "Analyze the visible image. Default = APPROVE. Block ONLY if you can name a specific trigger from the BLOCK list (genitals/nipples, sex act, lingerie+sexual pose, hentai, gore, active violence, self-harm, hard drug use, hate symbol, porn text). Normal selfies, fashion, food, products, scenery, sports, reels, Pinterest pins = SAFE. If unsure → should_block=false.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
     let providerUsed = "none";
     let firstError: any = null;
 
-    // Try Google first (free but limited)
     if (GEMINI_API_KEY) {
       try {
         analysis = await callGoogleAIStudio({
@@ -290,7 +275,6 @@ serve(async (req) => {
       }
     }
 
-    // Fallback to Lovable Gateway
     if (!analysis && LOVABLE_API_KEY) {
       const imageContent = image_base64
         ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
@@ -322,15 +306,17 @@ serve(async (req) => {
       });
     }
 
-    // Confidence-gated blocking — protects against false positives
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
+    // Strict confidence gate — only block on high-confidence HARD triggers
+    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.5;
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardRisk = /nud|porn|sex|lingerie|underwear|hentai|gore|violence|weapon|self-harm|suicide|drug|hate|behayo|zo'ravon|yalang/.test(categoryText);
-    const minBlockConfidence = hardRisk ? 0.55 : 0.68;
-    if (analysis.should_block && conf < minBlockConfidence) {
-      analysis.should_block = false;
-      analysis.block_reason = "Low confidence — approved";
+    const hardTrigger = /nud|porn|genital|nipple|sex act|penetrat|hentai|gore|blood|wound|corpse|weapon|self-harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang/.test(categoryText);
+    if (analysis.should_block) {
+      if (!hardTrigger || conf < 0.7) {
+        analysis.should_block = false;
+        analysis.block_reason = "Approved — no concrete harm trigger";
+      }
     }
+
 
     return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
