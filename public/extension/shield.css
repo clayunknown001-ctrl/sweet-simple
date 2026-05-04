@@ -1,19 +1,20 @@
 .ai-radar-blocked {
-  opacity: 0 !important;
-  visibility: hidden !important;
-  filter: blur(80px) grayscale(1) brightness(0) !important;
+  /* Asl element shield ortida absolutely yashirilgan, ko'rinmaydi */
   pointer-events: none !important;
   user-select: none !important;
-  transition: filter 0.1s ease !important;
-  cursor: not-allowed !important;
 }
-.ai-radar-container-blocked {
-  pointer-events: none !important;
+.ai-radar-wrapper {
+  position: relative !important;
+  display: inline-block !important;
+  vertical-align: middle;
+  background: #0a0f1c;
+  border-radius: 6px;
+  overflow: hidden;
 }
 .ai-radar-shield {
-  position: absolute;
-  inset: 0;
-  background: rgba(10, 15, 28, 0.97);
+  position: absolute !important;
+  inset: 0 !important;
+  background: rgba(10, 15, 28, 0.98);
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -27,14 +28,10 @@
   border: 2px solid #ef4444;
   border-radius: 6px;
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.3);
-  pointer-events: auto;
-  cursor: not-allowed;
+  pointer-events: auto !important;
+  cursor: not-allowed !important;
   user-select: none;
   overflow: hidden;
-}
-.ai-radar-container-blocked > .ai-radar-shield,
-.ai-radar-shield {
-  pointer-events: auto !important;
 }
 .ai-radar-shield .icon { font-size: 26px; margin-bottom: 4px; }
 .ai-radar-shield .title {
