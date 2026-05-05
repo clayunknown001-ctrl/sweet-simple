@@ -220,6 +220,19 @@
     "эскорт","стриптиз","мастурб","оргазм","анал","минет","самоубий","наркотик",
     "behayo","yalang'och","yalangoch","ichki kiyim","kupalnik","fohisha","jinsi a'zo",
   ];
+  const META_BLOCK_KEYWORDS = [
+    "porn","porno","xxx","nsfw","nude","naked","nudity","topless","onlyfans","hentai",
+    "sex tape","sex scene","sexual","stripper","strip club","camgirl","escort","fetish",
+    "boobs","tits","nipple","pussy","vagina","penis","dick","cock","masturbat","orgasm",
+    "blowjob","anal","cum","gore","behead","bloodbath","suicide","self-harm","cocaine","heroin","meth",
+    "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм",
+    "yalang'och","yalangoch","behayo","jinsi a'zo","porno","fohisha"
+  ];
+  const META_SUSPECT_KEYWORDS = [
+    "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
+    "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
+    "купальник","нижнее белье","стринги","декольте","эрот","kupalnik","ichki kiyim"
+  ];
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
@@ -260,8 +273,21 @@
       el.closest && el.closest("a")?.href,
       el.closest && el.closest("a")?.textContent?.slice(0, 80),
       el.closest && el.closest("article")?.textContent?.slice(0, 160),
+      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 240),
+      el.closest && el.closest("[role='link'],[role='button']")?.getAttribute?.("aria-label"),
+      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 160),
     ];
     return parts.filter(Boolean).join(" ").slice(0, 1000);
+  }
+  function hasMetaBlockRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return META_BLOCK_KEYWORDS.some((kw) => t.includes(kw));
+  }
+  function hasMetaSuspectRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return META_SUSPECT_KEYWORDS.some((kw) => t.includes(kw));
   }
   function hasStrongMediaRisk(text) {
     const t = normalizeText(text);
