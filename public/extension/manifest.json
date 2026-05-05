@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Radar — Real-Time Content Shield",
-  "version": "2.0.0",
-  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.0: CORS bypass, hard-remove blok, agressiv aniqlash.",
+  "version": "2.1.0",
+  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.1: DOM qayta-skan, base64 cloud fallback, qat'iy metadata/video blok.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
