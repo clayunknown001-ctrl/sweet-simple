@@ -257,7 +257,18 @@
       el.getAttribute?.("data-src"), el.getAttribute?.("data-original"),
       el.getAttribute?.("data-lazy-src"), el.getAttribute?.("data-actualsrc"),
     ];
-    return attrs.find((u) => u && u !== BLANK_PIXEL && !String(u).startsWith("data:")) || "";
+    return attrs.find((u) => u && u !== BLANK_PIXEL) || "";
+  }
+  function extractYouTubeId(text) {
+    const s = String(text || location.href);
+    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1] || "";
+  }
+  function analysisUrlForVideo(video) {
+    const poster = video.poster || "";
+    if (poster && !poster.startsWith("blob:")) return poster;
+    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeId(location.href) : "";
+    if (yt) return `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`;
+    return video.currentSrc || video.src || poster || location.href;
   }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
