@@ -345,11 +345,39 @@
   // ========== HARD-BLOCK SHIELD (mutlaqo ochib bo'lmaydi) ==========
   // 1x1 transparent PNG
   const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  const STOP_EVENTS = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"];
+  const hardStop = (e) => {
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-blocked");
+    if (!blocked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return false;
+  };
+  STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
+
+  function neutralizeContainer(el) {
+    const selectors = [
+      "a", "[role='link']", "[role='button']", "article",
+      "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-reel-video-renderer", "ytd-thumbnail",
+      "[data-test-id='pin']", "[data-grid-item]", "div[style*='transform']"
+    ];
+    const targets = new Set([el]);
+    selectors.forEach((sel) => { const t = el.closest?.(sel); if (t) targets.add(t); });
+    targets.forEach((t) => {
+      t.dataset.aiRadarBlockedContainer = "1";
+      if (t.href) { t.dataset.aiRadarOrigHref = t.href; try { t.removeAttribute("href"); } catch {} }
+      if (t.getAttribute?.("role") === "link") t.setAttribute("aria-disabled", "true");
+      try { t.style.cursor = "not-allowed"; } catch {}
+      STOP_EVENTS.forEach((evt) => t.addEventListener(evt, hardStop, { capture: true, passive: false }));
+    });
+  }
 
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
     const rectBefore = el.getBoundingClientRect();
+    neutralizeContainer(el);
     blockedCount++;
     stats.totalBlocked = blockedCount;
     if (source === "cloud") stats.cloudBlocked++;
