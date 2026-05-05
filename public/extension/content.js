@@ -658,9 +658,7 @@
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
           result = await analyzeBase64(b64);
-        } else {
-          result = await analyzeUrl(url);
-        }
+        } else result = await analyzeMediaUrlPreferBase64(url);
         if (result.block) shieldElement(img, result.reason, "cloud");
       });
     }
@@ -679,7 +677,7 @@
     PROCESSING.set(video, key);
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeUrl(poster);
+        const { block, reason } = await analyzeMediaUrlPreferBase64(poster);
         if (block) shieldElement(video, reason, "cloud");
         else setTimeout(() => captureFrame(video), 800);
       });
