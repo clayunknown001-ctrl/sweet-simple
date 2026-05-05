@@ -595,16 +595,17 @@
   // ========== Scanners ==========
   async function processImage(img) {
     if (paused) return;
-    if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
+    if (img.dataset.aiRadarBlocked) return;
     const url = mediaUrl(img);
-    if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
+    if (!url || url === BLANK_PIXEL || url.length < 10) return;
+    if (PROCESSING.get(img) === url) return;
     if (!img.complete || !img.naturalWidth) {
       img.addEventListener("load", () => processImage(img), { once: true });
       return;
     }
     if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
-    PROCESSING.add(img);
+    PROCESSING.set(img, url);
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -647,8 +648,8 @@
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
-        if (robustData) {
-          const b64 = robustData.split(",")[1];
+        if (robustData || url.startsWith("data:image/")) {
+          const b64 = (robustData || url).split(",")[1];
           result = await analyzeBase64(b64);
         } else {
           result = await analyzeUrl(url);
