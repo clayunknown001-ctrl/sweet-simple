@@ -307,8 +307,11 @@
   function localBlockDecision(el, url) {
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
-    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
-    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext)) {
+    const isTinyProfile = el.tagName === "IMG" && Math.max(el.naturalWidth || 0, el.naturalHeight || 0) < 220;
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText) || (!isTinyProfile && hasMetaBlockRisk(pageContext))) {
+      return { block: true, reason: "Xavfli matn/media belgisi" };
+    }
+    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
       // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
       // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
       return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
