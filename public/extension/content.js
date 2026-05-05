@@ -827,7 +827,7 @@
     });
     document.querySelectorAll("img, video").forEach(observe);
     setInterval(() => document.querySelectorAll("img, video").forEach(observe), 2500);
-    console.log(`%c[AI Radar v3] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    console.log(`%c[AI Radar v4] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
   if (document.readyState === "loading") {
