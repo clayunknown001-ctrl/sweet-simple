@@ -1,5 +1,5 @@
 /**
- * AI Radar — Content Script v3
+ * AI Radar — Content Script v4
  * 3 qatlamli himoya:
  *   1. Whitelist/Blacklist (0ms, lokal)
  *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
@@ -15,9 +15,9 @@
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 2;
-  // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
-  const CACHE_KEY = "__ai_radar_cache_v6__";
-  const PROCESSING = new WeakSet();
+  // v7: eski yumshoq qaror/cache'larni bekor qiladi; dynamic DOM qayta tekshiriladi
+  const CACHE_KEY = "__ai_radar_cache_v7__";
+  const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
   let blockedCount = 0;
