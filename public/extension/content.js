@@ -416,6 +416,12 @@
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
+        const picture = el.closest?.("picture");
+        picture?.querySelectorAll?.("source").forEach((s) => {
+          if (s.srcset) s.dataset.aiRadarSrcset = s.srcset;
+          s.removeAttribute("srcset");
+          s.removeAttribute("media");
+        });
         el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
       } catch {}
@@ -436,6 +442,7 @@
     }
 
     el.classList.add("ai-radar-blocked");
+    el.setAttribute("aria-hidden", "true");
 
     STOP_EVENTS.forEach((evt) => {
       el.addEventListener(evt, hardStop, { capture: true, passive: false });
