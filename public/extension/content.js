@@ -581,6 +581,13 @@
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
     } catch { return { block: false, reason: "" }; }
   }
+  async function analyzeMediaUrlPreferBase64(url) {
+    if (!url) return { block: false, reason: "" };
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1]);
+    const dataUrl = await fetchImageViaBackground(url);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1]);
+    return analyzeUrl(url);
+  }
 
   // ========== Queue ==========
   function enqueue(task) { QUEUE.push(task); drain(); }
