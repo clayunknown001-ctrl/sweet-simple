@@ -661,18 +661,20 @@
 
   function processVideo(video) {
     if (paused) return;
-    if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
-    const poster = video.poster;
-    const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
+    if (video.dataset.aiRadarBlocked) return;
+    const poster = analysisUrlForVideo(video);
+    const key = `${poster}|${video.currentSrc || video.src || ""}|${location.href}`;
+    if (PROCESSING.get(video) === key) return;
+    const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
 
-    PROCESSING.add(video);
-    if (poster && !poster.startsWith("data:") && !VISUAL_RISK_HOST) {
+    PROCESSING.set(video, key);
+    if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
         const { block, reason } = await analyzeUrl(poster);
         if (block) shieldElement(video, reason, "cloud");
-        else if (local.suspicious && VISUAL_RISK_HOST) setTimeout(() => captureFrame(video), 800);
+        else setTimeout(() => captureFrame(video), 800);
       });
     } else {
       enqueue(() => captureFrame(video));
