@@ -6,21 +6,19 @@ const corsHeaders = {
 };
 
 // =============================================================
-// BALANCED MODERATION
-// Goal: Detect REAL harmful content (porn, gore, violence, hentai)
-// while not blocking normal feeds (selfies, fashion, products,
-// scenery, sports). When in doubt — ERR ON SAFE SIDE on
-// social-media style risky framing.
+// STRICT MODERATION
+// Goal: Block harmful / sexualized / useless visual triggers without blocking
+// neutral objects like cars, products, scenery, UI screenshots, or family photos.
 // =============================================================
 const reasoningLayer = `
 ## DECISION FRAMEWORK
-You are a content moderation AI. Your job is to protect users from explicit, harmful, or psychologically damaging visual content. Be thorough — missing real porn/gore is WORSE than blocking borderline content.
+You are a strict content moderation AI for a child-safe custom browser. Missing harmful or sexualized content is worse than a false positive. Neutral objects must pass; sexualized/revealing humans must block.
 
 ## BLOCK (set should_block=true) when the image contains ANY of:
 1. **Nudity / pornography**: any visible genitals, anus, female nipples, sex acts, penetration, oral sex, masturbation, ejaculation, cum
 2. **Hentai / animated porn**: drawn/cartoon/anime sexual content, even partial nudity
-3. **Heavily seductive/sexualized poses**: lingerie/underwear shots that are clearly framed for sexual gratification (close-up crotch, spread legs, suggestive bedroom poses, "OnlyFans" style framing)
-4. **Visible suggestive parts as the focus**: extreme cleavage close-up, framing that centers buttocks/breasts as focal point with sexual intent
+3. **Revealing clothing / sexualized body display**: lingerie, underwear, thong, bikini/swimwear, see-through clothing, micro-skirts, exposed underboob/sideboob, or clothing primarily exposing breasts/buttocks/crotch/upper thighs
+4. **Suggestive pose/framing**: body-part focus, cleavage/buttocks/crotch focus, arched back, spread legs, crawling/bed poses, twerking/grinding/dance framed around hips/buttocks/breasts, “thirst trap”/OnlyFans-style framing
 5. **Violence / gore**: blood, open wounds, severed body parts, corpses, beheadings, executions, fighting with visible injury
 6. **Self-harm / suicide**: cutting, hanging, suicide methods, glorification
 7. **Hard drug use**: needles in arms, cooking drugs, smoking crack/meth, visible powder/pills with paraphernalia
@@ -28,11 +26,10 @@ You are a content moderation AI. Your job is to protect users from explicit, har
 9. **Weapons aimed at people / mass shooters posing**
 10. **Pornographic text overlay** or sexual captions clearly visible in image
 
-## APPROVE (should_block=false) for:
+## APPROVE (should_block=false) for clearly neutral content:
 - Fully clothed people in normal contexts (selfies, group photos, portraits)
-- Fashion shoots with normal outfits even if revealing (crop top, low neckline, mini skirt, tight clothing) — fashion context, not sexual framing
-- Bikini/swimwear at beach/pool/sport context where the SETTING is the focus, not the body
-- Athletes in sportswear during sport activity
+- Fashion/product photos only when the person is fully clothed and not body-part focused
+- Athletes in normal sportswear during real sport activity, unless body-part focused or sexualized
 - Products, food, ads, packaging
 - Cars, gadgets, machinery, screenshots
 - Nature, animals, landscapes, architecture
@@ -40,25 +37,25 @@ You are a content moderation AI. Your job is to protect users from explicit, har
 - Cartoons (non-pornographic), children's content
 - Religious/cultural attire
 - Kissing (non-explicit, clothed)
-- Dance moves in clothed reels (twerking alone in clothes ≠ block; only if combined with exposed parts)
+- Dance moves only when fully clothed and not focused on hips/buttocks/breasts/crotch
 
 ## CRITICAL RULES
-- If the image is a FASHION/CATALOG product photo of underwear on a model in standard pose → APPROVE
-- If the same underwear shot is FRAMED SEXUALLY (laying in bed, spread legs, suggestive look at camera, close-up of crotch/butt) → BLOCK
+- If the image is a FASHION/CATALOG product photo of underwear/bikini/lingerie on a model → BLOCK in this product, even if standard pose
+- If the person is not fully clothed or the body is the main attraction → BLOCK
 - "Attractive person" alone is NEVER a reason to block
 - Confidence:
   - For categories 1, 2, 5, 6, 7 (nudity, hentai, gore, self-harm, drugs): block if confidence >= 0.55
-  - For categories 3, 4 (sexualized framing): block if confidence >= 0.7
+  - For categories 3, 4 (revealing clothing / sexualized framing): block if confidence >= 0.55
   - Other categories: block if confidence >= 0.65
 `;
 
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
-  const common = `You are a strict but accurate content moderation AI. Block real porn/gore/violence/self-harm/drugs. Approve normal selfies, fashion, products, scenery, sports.
+  const common = `You are a strict but accurate content moderation AI. Block porn, nudity, revealing/sexualized clothing, sexualized poses, gore, violence, self-harm, drugs. Approve neutral objects and fully clothed normal people.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
-Return JSON via the function. Be decisive — clear porn/gore = block. Normal photos = approve.`;
+Return JSON via the function. Be decisive — if a visible person is sexualized or revealing, block. Neutral non-human content = approve.`;
   return fast ? common : common + "\nThink step-by-step before deciding.";
 }
 
@@ -246,7 +243,7 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, heavy sexual framing (lingerie posed sexually, OnlyFans-style), gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE: normal selfies, fashion (even revealing in fashion context), products, food, scenery, sports, kissing (clothed), dance in clothes. Be decisive — real porn/gore must be blocked.";
+    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, lingerie/underwear/bikini/thong/revealing clothing on a person, cleavage/buttocks/crotch/body-part focus, twerking/grinding/sexualized dance, OnlyFans/thirst-trap framing, gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people. Be decisive — harmful/sexualized content must be blocked.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -302,7 +299,7 @@ serve(async (req) => {
     // tekshirib ko'ramiz. Hard trigger bo'lsa 0.55, aks holda 0.65 yetarli.
     const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.6;
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive/.test(categoryText);
+    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive|underwear|bikini|thong|swimwear|cleavage|butt|crotch|twerk|grind|revealing|body.?part/.test(categoryText);
     if (analysis.should_block) {
       const minConf = hardTrigger ? 0.55 : 0.65;
       if (conf < minConf) {

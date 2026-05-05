@@ -1,5 +1,5 @@
 /**
- * AI Radar — Content Script v3
+ * AI Radar — Content Script v4
  * 3 qatlamli himoya:
  *   1. Whitelist/Blacklist (0ms, lokal)
  *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
@@ -15,9 +15,9 @@
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 2;
-  // v4: eski false-positive cache'larni bekor qiladi (Pinterest/Instagram muammosi)
-  const CACHE_KEY = "__ai_radar_cache_v6__";
-  const PROCESSING = new WeakSet();
+  // v7: eski yumshoq qaror/cache'larni bekor qiladi; dynamic DOM qayta tekshiriladi
+  const CACHE_KEY = "__ai_radar_cache_v7__";
+  const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
   let blockedCount = 0;
@@ -220,6 +220,19 @@
     "эскорт","стриптиз","мастурб","оргазм","анал","минет","самоубий","наркотик",
     "behayo","yalang'och","yalangoch","ichki kiyim","kupalnik","fohisha","jinsi a'zo",
   ];
+  const META_BLOCK_KEYWORDS = [
+    "porn","porno","xxx","nsfw","nude","naked","nudity","topless","onlyfans","hentai",
+    "sex tape","sex scene","sexual","stripper","strip club","camgirl","escort","fetish",
+    "boobs","tits","nipple","pussy","vagina","penis","dick","cock","masturbat","orgasm",
+    "blowjob","anal","cum","gore","behead","bloodbath","suicide","self-harm","cocaine","heroin","meth",
+    "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм",
+    "yalang'och","yalangoch","behayo","jinsi a'zo","porno","fohisha"
+  ];
+  const META_SUSPECT_KEYWORDS = [
+    "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
+    "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
+    "купальник","нижнее белье","стринги","декольте","эрот","kupalnik","ichki kiyim"
+  ];
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
@@ -244,7 +257,18 @@
       el.getAttribute?.("data-src"), el.getAttribute?.("data-original"),
       el.getAttribute?.("data-lazy-src"), el.getAttribute?.("data-actualsrc"),
     ];
-    return attrs.find((u) => u && u !== BLANK_PIXEL && !String(u).startsWith("data:")) || "";
+    return attrs.find((u) => u && u !== BLANK_PIXEL) || "";
+  }
+  function extractYouTubeId(text) {
+    const s = String(text || location.href);
+    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1] || "";
+  }
+  function analysisUrlForVideo(video) {
+    const poster = video.poster || "";
+    if (poster && !poster.startsWith("blob:")) return poster;
+    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeId(location.href) : "";
+    if (yt) return `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`;
+    return video.currentSrc || video.src || poster || location.href;
   }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
@@ -260,8 +284,21 @@
       el.closest && el.closest("a")?.href,
       el.closest && el.closest("a")?.textContent?.slice(0, 80),
       el.closest && el.closest("article")?.textContent?.slice(0, 160),
+      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 240),
+      el.closest && el.closest("[role='link'],[role='button']")?.getAttribute?.("aria-label"),
+      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 160),
     ];
     return parts.filter(Boolean).join(" ").slice(0, 1000);
+  }
+  function hasMetaBlockRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return META_BLOCK_KEYWORDS.some((kw) => t.includes(kw));
+  }
+  function hasMetaSuspectRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return META_SUSPECT_KEYWORDS.some((kw) => t.includes(kw));
   }
   function hasStrongMediaRisk(text) {
     const t = normalizeText(text);
@@ -281,8 +318,11 @@
   function localBlockDecision(el, url) {
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
-    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) return { block: true, reason: "Xavfli URL/media belgisi" };
-    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext)) {
+    const isTinyProfile = el.tagName === "IMG" && Math.max(el.naturalWidth || 0, el.naturalHeight || 0) < 220;
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText) || (!isTinyProfile && hasMetaBlockRisk(pageContext))) {
+      return { block: true, reason: "Xavfli matn/media belgisi" };
+    }
+    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
       // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
       // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
       return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
@@ -305,11 +345,39 @@
   // ========== HARD-BLOCK SHIELD (mutlaqo ochib bo'lmaydi) ==========
   // 1x1 transparent PNG
   const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  const STOP_EVENTS = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"];
+  const hardStop = (e) => {
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-blocked");
+    if (!blocked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return false;
+  };
+  STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
+
+  function neutralizeContainer(el) {
+    const selectors = [
+      "a", "[role='link']", "[role='button']", "article",
+      "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-reel-video-renderer", "ytd-thumbnail",
+      "[data-test-id='pin']", "[data-grid-item]", "div[style*='transform']"
+    ];
+    const targets = new Set([el]);
+    selectors.forEach((sel) => { const t = el.closest?.(sel); if (t) targets.add(t); });
+    targets.forEach((t) => {
+      t.dataset.aiRadarBlockedContainer = "1";
+      if (t.href) { t.dataset.aiRadarOrigHref = t.href; try { t.removeAttribute("href"); } catch {} }
+      if (t.getAttribute?.("role") === "link") t.setAttribute("aria-disabled", "true");
+      try { t.style.cursor = "not-allowed"; } catch {}
+      STOP_EVENTS.forEach((evt) => t.addEventListener(evt, hardStop, { capture: true, passive: false }));
+    });
+  }
 
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
     const rectBefore = el.getBoundingClientRect();
+    neutralizeContainer(el);
     blockedCount++;
     stats.totalBlocked = blockedCount;
     if (source === "cloud") stats.cloudBlocked++;
@@ -348,6 +416,12 @@
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
+        const picture = el.closest?.("picture");
+        picture?.querySelectorAll?.("source").forEach((s) => {
+          if (s.srcset) s.dataset.aiRadarSrcset = s.srcset;
+          s.removeAttribute("srcset");
+          s.removeAttribute("media");
+        });
         el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
       } catch {}
@@ -368,14 +442,9 @@
     }
 
     el.classList.add("ai-radar-blocked");
+    el.setAttribute("aria-hidden", "true");
 
-    const hardStop = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      return false;
-    };
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+    STOP_EVENTS.forEach((evt) => {
       el.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
 
@@ -386,7 +455,7 @@
       if (anchor.href) anchor.dataset.aiRadarOrigHref = anchor.href;
       try { anchor.removeAttribute("href"); } catch {}
       anchor.style.cursor = "not-allowed";
-      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+      STOP_EVENTS.forEach((evt) => {
         anchor.addEventListener(evt, hardStop, { capture: true, passive: false });
       });
     }
@@ -417,7 +486,7 @@
       width: "100%",
       height: "100%",
     });
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+    STOP_EVENTS.forEach((evt) => {
       shield.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
 
@@ -519,6 +588,13 @@
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
     } catch { return { block: false, reason: "" }; }
   }
+  async function analyzeMediaUrlPreferBase64(url) {
+    if (!url) return { block: false, reason: "" };
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1]);
+    const dataUrl = await fetchImageViaBackground(url);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1]);
+    return analyzeUrl(url);
+  }
 
   // ========== Queue ==========
   function enqueue(task) { QUEUE.push(task); drain(); }
@@ -533,16 +609,17 @@
   // ========== Scanners ==========
   async function processImage(img) {
     if (paused) return;
-    if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
+    if (img.dataset.aiRadarBlocked) return;
     const url = mediaUrl(img);
-    if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
+    if (!url || url === BLANK_PIXEL || url.length < 10) return;
+    if (PROCESSING.get(img) === url) return;
     if (!img.complete || !img.naturalWidth) {
       img.addEventListener("load", () => processImage(img), { once: true });
       return;
     }
     if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
-    PROCESSING.add(img);
+    PROCESSING.set(img, url);
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -585,12 +662,10 @@
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
-        if (robustData) {
-          const b64 = robustData.split(",")[1];
+        if (robustData || url.startsWith("data:image/")) {
+          const b64 = (robustData || url).split(",")[1];
           result = await analyzeBase64(b64);
-        } else {
-          result = await analyzeUrl(url);
-        }
+        } else result = await analyzeMediaUrlPreferBase64(url);
         if (result.block) shieldElement(img, result.reason, "cloud");
       });
     }
@@ -598,18 +673,20 @@
 
   function processVideo(video) {
     if (paused) return;
-    if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
-    const poster = video.poster;
-    const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
+    if (video.dataset.aiRadarBlocked) return;
+    const poster = analysisUrlForVideo(video);
+    const key = `${poster}|${video.currentSrc || video.src || ""}|${location.href}`;
+    if (PROCESSING.get(video) === key) return;
+    const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
 
-    PROCESSING.add(video);
-    if (poster && !poster.startsWith("data:") && !VISUAL_RISK_HOST) {
+    PROCESSING.set(video, key);
+    if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeUrl(poster);
+        const { block, reason } = await analyzeMediaUrlPreferBase64(poster);
         if (block) shieldElement(video, reason, "cloud");
-        else if (local.suspicious && VISUAL_RISK_HOST) setTimeout(() => captureFrame(video), 800);
+        else setTimeout(() => captureFrame(video), 800);
       });
     } else {
       enqueue(() => captureFrame(video));
@@ -734,6 +811,10 @@
               else if (m.target.tagName === "VIDEO") { m.target.removeAttribute("src"); m.target.load(); }
             } catch {}
           }
+        } else {
+          observe(m.target);
+          if (m.target.tagName === "IMG") processImage(m.target);
+          else processVideo(m.target);
         }
       }
     }
@@ -745,7 +826,8 @@
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    console.log(`%c[AI Radar v3] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 2500);
+    console.log(`%c[AI Radar v4] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
   if (document.readyState === "loading") {
