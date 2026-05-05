@@ -437,13 +437,7 @@
 
     el.classList.add("ai-radar-blocked");
 
-    const hardStop = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      return false;
-    };
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+    STOP_EVENTS.forEach((evt) => {
       el.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
 
@@ -454,7 +448,7 @@
       if (anchor.href) anchor.dataset.aiRadarOrigHref = anchor.href;
       try { anchor.removeAttribute("href"); } catch {}
       anchor.style.cursor = "not-allowed";
-      ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+      STOP_EVENTS.forEach((evt) => {
         anchor.addEventListener(evt, hardStop, { capture: true, passive: false });
       });
     }
@@ -485,7 +479,7 @@
       width: "100%",
       height: "100%",
     });
-    ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"].forEach((evt) => {
+    STOP_EVENTS.forEach((evt) => {
       shield.addEventListener(evt, hardStop, { capture: true, passive: false });
     });
 
