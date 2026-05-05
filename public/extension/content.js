@@ -811,6 +811,10 @@
               else if (m.target.tagName === "VIDEO") { m.target.removeAttribute("src"); m.target.load(); }
             } catch {}
           }
+        } else {
+          observe(m.target);
+          if (m.target.tagName === "IMG") processImage(m.target);
+          else processVideo(m.target);
         }
       }
     }
@@ -822,6 +826,7 @@
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
+    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 2500);
     console.log(`%c[AI Radar v3] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
