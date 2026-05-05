@@ -51,11 +51,11 @@ You are a strict content moderation AI for a child-safe custom browser. Missing 
 
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
-  const common = `You are a strict but accurate content moderation AI. Block real porn/gore/violence/self-harm/drugs. Approve normal selfies, fashion, products, scenery, sports.
+  const common = `You are a strict but accurate content moderation AI. Block porn, nudity, revealing/sexualized clothing, sexualized poses, gore, violence, self-harm, drugs. Approve neutral objects and fully clothed normal people.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
-Return JSON via the function. Be decisive — clear porn/gore = block. Normal photos = approve.`;
+Return JSON via the function. Be decisive — if a visible person is sexualized or revealing, block. Neutral non-human content = approve.`;
   return fast ? common : common + "\nThink step-by-step before deciding.";
 }
 
@@ -243,7 +243,7 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, heavy sexual framing (lingerie posed sexually, OnlyFans-style), gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE: normal selfies, fashion (even revealing in fashion context), products, food, scenery, sports, kissing (clothed), dance in clothes. Be decisive — real porn/gore must be blocked.";
+    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, lingerie/underwear/bikini/thong/revealing clothing on a person, cleavage/buttocks/crotch/body-part focus, twerking/grinding/sexualized dance, OnlyFans/thirst-trap framing, gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people. Be decisive — harmful/sexualized content must be blocked.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
