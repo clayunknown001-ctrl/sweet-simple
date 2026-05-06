@@ -414,6 +414,7 @@
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
+    clearPreShield(el);
     const rectBefore = el.getBoundingClientRect();
     neutralizeContainer(el);
     blockedCount++;
@@ -741,9 +742,10 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
+    preShield(video);
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeMediaUrlPreferBase64(poster);
+        const { block, reason } = await analyzeMediaUrlPreferBase64(poster, shouldFailClosed(video, local, false));
         if (block) shieldElement(video, reason, "cloud");
         else setTimeout(() => captureFrame(video), 800);
       });
@@ -807,7 +809,7 @@
           if (r && r.preds) {
             const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST);
             if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
-            if (decision?.confident && !decision.block) { noteLocalApproved(); continue; }
+            if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); continue; }
           }
         }
 
@@ -818,6 +820,7 @@
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
+    clearPreShield(video);
   }
 
   async function sampleCurrentVideoFrame(video, W, H) {
@@ -828,13 +831,14 @@
         if (r && r.preds) {
           const decision = decideFromNsfw(r.preds, true);
           if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
-          if (decision?.confident && !decision.block) { noteLocalApproved(); return; }
+          if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); clearPreShield(video); return; }
         }
       }
-      if (aiDisabled) return;
+      if (aiDisabled) { clearPreShield(video); return; }
       const b64 = dataUrl.split(",")[1];
       const { block, reason } = await analyzeBase64(b64);
       if (block) shieldElement(video, reason, "cloud");
+      else clearPreShield(video);
     } catch {}
   }
 
