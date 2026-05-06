@@ -14,9 +14,9 @@
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 2;
-  // v7: eski yumshoq qaror/cache'larni bekor qiladi; dynamic DOM qayta tekshiriladi
-  const CACHE_KEY = "__ai_radar_cache_v7__";
+  const MAX_CONCURRENT = 4;
+  // v8: fail-soft safe cache bekor, visual-risk saytlar uchun qat'iyroq qayta tahlil
+  const CACHE_KEY = "__ai_radar_cache_v8__";
   const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
@@ -111,7 +111,7 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
 
-  // v2.0: balanslangan threshold'lar — visual-risk saytlarda strictroq.
+  // v2.2: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar qat'iylashtirildi.
   function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -119,15 +119,16 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.45 : 0.55;
-    const hentaiT = strict ? 0.5 : 0.6;
+    const pornT = strict ? 0.32 : 0.48;
+    const hentaiT = strict ? 0.36 : 0.52;
     if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
     if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > 0.55) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.85 && neutral < 0.15) return { block: true, reason: "Erotik kontent", confident: true };
-    if (neutral > 0.7 && porn + hentai < 0.1) return { block: false, confident: true };
+    if (porn + hentai > (strict ? 0.42 : 0.52)) return { block: true, reason: "Behayo kontent", confident: true };
+    if (strict && sexy > 0.6 && neutral < 0.45) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (strict && sexy > 0.48) return { block: false, confident: false, suspicious: true };
+    if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
     if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
-    if (porn + hentai > 0.2 || sexy > 0.55) return { block: false, confident: false, suspicious: true };
+    if (porn + hentai > 0.16 || sexy > 0.45) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: true };
   }
 
