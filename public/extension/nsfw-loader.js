@@ -7,8 +7,10 @@
   if (window.__AI_RADAR_NSFW__) return;
   window.__AI_RADAR_NSFW__ = { ready: false, model: null, loading: false };
 
-  const TFJS_URL = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js";
-  const NSFWJS_URL = "https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js";
+  const EXT_BASE = (document.currentScript?.src || "").replace(/nsfw-loader\.js(?:\?.*)?$/, "");
+  const TFJS_URL = EXT_BASE + "vendor/tf.min.js";
+  const NSFWJS_URL = EXT_BASE + "vendor/nsfwjs.min.js";
+  const MODEL_URL = EXT_BASE + "vendor/nsfw-model/";
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -30,14 +32,8 @@
     try {
       if (!window.tf) await loadScript(TFJS_URL);
       if (!window.nsfwjs) await loadScript(NSFWJS_URL);
-      // Default MobileNetV2 (nsfwjs avtomatik to'g'ri URL'ni topadi)
-      let model;
-      try {
-        model = await window.nsfwjs.load();
-      } catch (e1) {
-        // Fallback: ishonchli mirror
-        model = await window.nsfwjs.load("https://nsfw-model-cdn.netlify.app/mobilenet_v2/");
-      }
+      // Model va kutubxonalar extension ichida: CDN/CSP/DNS ishlamasa ham lokal AI ishlaydi.
+      const model = await window.nsfwjs.load(MODEL_URL);
       window.__AI_RADAR_NSFW__.model = model;
       window.__AI_RADAR_NSFW__.ready = true;
       window.dispatchEvent(new CustomEvent("ai-radar-nsfw-ready"));
