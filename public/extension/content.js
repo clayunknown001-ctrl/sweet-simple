@@ -586,9 +586,23 @@
     });
   }
 
+  function mediaVisibleSize(el) {
+    const r = el.getBoundingClientRect();
+    const w = r.width || el.offsetWidth || el.naturalWidth || el.videoWidth || 0;
+    const h = r.height || el.offsetHeight || el.naturalHeight || el.videoHeight || 0;
+    return { w, h };
+  }
+
+  function shouldFailClosed(el, local = {}) {
+    const { w, h } = mediaVisibleSize(el);
+    if (WHITELISTED) return false;
+    if (local.block || local.suspicious) return true;
+    return VISUAL_RISK_HOST && w >= 180 && h >= 180;
+  }
+
   // ========== AI request ==========
-  async function analyzeUrl(url) {
-    if (aiDisabled) return { block: false, reason: "" };
+  async function analyzeUrl(url, failClosed = false) {
+    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     const key = urlHash(url);
     if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
     try {
@@ -600,7 +614,7 @@
       if (res.status === 402 || res.status === 429) {
         aiDisabled = true;
         console.warn("[AI Radar] AI quota tugadi — lokal filtr ishlaydi");
-        return { block: false, reason: "" };
+        return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" };
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -609,29 +623,29 @@
       cacheDirty = true;
       return result;
     } catch (e) {
-      return { block: false, reason: "" };
+      return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" };
     }
   }
-  async function analyzeBase64(base64) {
-    if (aiDisabled) return { block: false, reason: "" };
+  async function analyzeBase64(base64, failClosed = false) {
+    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
         body: JSON.stringify({ image_base64: base64, fast: true, language: "uz" }),
       });
-      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: false, reason: "" }; }
+      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" }; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
-    } catch { return { block: false, reason: "" }; }
+    } catch { return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" }; }
   }
-  async function analyzeMediaUrlPreferBase64(url) {
-    if (!url) return { block: false, reason: "" };
-    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1]);
+  async function analyzeMediaUrlPreferBase64(url, failClosed = false) {
+    if (!url) return { block: failClosed, reason: failClosed ? "Media URL topilmadi — xavfsizlik bloki" : "" };
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed);
     const dataUrl = await fetchImageViaBackground(url);
-    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1]);
-    return analyzeUrl(url);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed);
+    return analyzeUrl(url, failClosed);
   }
 
   // ========== Queue ==========
