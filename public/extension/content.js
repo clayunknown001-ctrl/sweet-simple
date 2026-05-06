@@ -14,9 +14,9 @@
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 2;
-  // v7: eski yumshoq qaror/cache'larni bekor qiladi; dynamic DOM qayta tekshiriladi
-  const CACHE_KEY = "__ai_radar_cache_v7__";
+  const MAX_CONCURRENT = 4;
+  // v8: fail-soft safe cache bekor, visual-risk saytlar uchun qat'iyroq qayta tahlil
+  const CACHE_KEY = "__ai_radar_cache_v8__";
   const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
@@ -111,7 +111,7 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
 
-  // v2.0: balanslangan threshold'lar — visual-risk saytlarda strictroq.
+  // v2.2: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar qat'iylashtirildi.
   function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -119,15 +119,16 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.45 : 0.55;
-    const hentaiT = strict ? 0.5 : 0.6;
+    const pornT = strict ? 0.32 : 0.48;
+    const hentaiT = strict ? 0.36 : 0.52;
     if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
     if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > 0.55) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.85 && neutral < 0.15) return { block: true, reason: "Erotik kontent", confident: true };
-    if (neutral > 0.7 && porn + hentai < 0.1) return { block: false, confident: true };
+    if (porn + hentai > (strict ? 0.42 : 0.52)) return { block: true, reason: "Behayo kontent", confident: true };
+    if (strict && sexy > 0.6 && neutral < 0.45) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (strict && sexy > 0.48) return { block: false, confident: false, suspicious: true };
+    if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
     if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
-    if (porn + hentai > 0.2 || sexy > 0.55) return { block: false, confident: false, suspicious: true };
+    if (porn + hentai > 0.16 || sexy > 0.45) return { block: false, confident: false, suspicious: true };
     return { block: false, confident: true };
   }
 
@@ -233,6 +234,12 @@
     "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
     "купальник","нижнее белье","стринги","декольте","эрот","kupalnik","ichki kiyim"
   ];
+  const SITE_CONTAINER_SELECTORS = [
+    "article", "a", "[role='link']", "[role='button']", "[data-testid='cellInnerDiv']",
+    "[data-test-id='pin']", "[data-grid-item]", "[data-visualcompletion]",
+    "div[style*='transform']", "ytd-rich-item-renderer", "ytd-video-renderer",
+    "ytd-reel-video-renderer", "ytd-thumbnail"
+  ];
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
@@ -315,6 +322,37 @@
     if (!t) return false;
     return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","бикини","купальник","декольте","ichki kiyim","kupalnik"].some((kw) => t.includes(kw));
   }
+  function nearestMediaContainer(el) {
+    for (const sel of SITE_CONTAINER_SELECTORS) {
+      const found = el.closest?.(sel);
+      if (found) return found;
+    }
+    return el.parentElement || el;
+  }
+  function preShield(el, reason = "Tekshirilmoqda") {
+    if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    const r = el.getBoundingClientRect();
+    if ((r.width || el.offsetWidth || 0) < MIN_SIZE || (r.height || el.offsetHeight || 0) < MIN_SIZE) return;
+    el.dataset.aiRadarPreShield = "1";
+    const box = nearestMediaContainer(el);
+    if (!box || box.dataset.aiRadarPreShieldBox) return;
+    box.dataset.aiRadarPreShieldBox = "1";
+    box.classList.add("ai-radar-preblocked-container");
+    if (getComputedStyle(box).position === "static") box.style.position = "relative";
+    const shield = document.createElement("div");
+    shield.className = "ai-radar-pre-shield";
+    shield.textContent = `🛡️ ${reason}`;
+    box.appendChild(shield);
+  }
+  function clearPreShield(el) {
+    try {
+      delete el.dataset.aiRadarPreShield;
+      const box = nearestMediaContainer(el);
+      box?.querySelectorAll?.(":scope > .ai-radar-pre-shield").forEach((n) => n.remove());
+      box?.classList?.remove("ai-radar-preblocked-container");
+      if (box?.dataset) delete box.dataset.aiRadarPreShieldBox;
+    } catch {}
+  }
   function localBlockDecision(el, url) {
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
@@ -347,7 +385,7 @@
   const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
   const STOP_EVENTS = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"];
   const hardStop = (e) => {
-    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-blocked");
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-pre-shield,.ai-radar-blocked");
     if (!blocked) return;
     e.preventDefault();
     e.stopPropagation();
@@ -376,6 +414,7 @@
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
+    clearPreShield(el);
     const rectBefore = el.getBoundingClientRect();
     neutralizeContainer(el);
     blockedCount++;
@@ -548,9 +587,22 @@
     });
   }
 
+  function mediaVisibleSize(el) {
+    const r = el.getBoundingClientRect();
+    const w = r.width || el.offsetWidth || el.naturalWidth || el.videoWidth || 0;
+    const h = r.height || el.offsetHeight || el.naturalHeight || el.videoHeight || 0;
+    return { w, h };
+  }
+
+  function shouldFailClosed(el, local = {}, visualSignal = false) {
+    if (WHITELISTED) return false;
+    if (local.block || local.suspicious) return true;
+    return !!visualSignal;
+  }
+
   // ========== AI request ==========
-  async function analyzeUrl(url) {
-    if (aiDisabled) return { block: false, reason: "" };
+  async function analyzeUrl(url, failClosed = false) {
+    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     const key = urlHash(url);
     if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
     try {
@@ -562,7 +614,7 @@
       if (res.status === 402 || res.status === 429) {
         aiDisabled = true;
         console.warn("[AI Radar] AI quota tugadi — lokal filtr ishlaydi");
-        return { block: false, reason: "" };
+        return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" };
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -571,29 +623,29 @@
       cacheDirty = true;
       return result;
     } catch (e) {
-      return { block: false, reason: "" };
+      return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" };
     }
   }
-  async function analyzeBase64(base64) {
-    if (aiDisabled) return { block: false, reason: "" };
+  async function analyzeBase64(base64, failClosed = false) {
+    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
         body: JSON.stringify({ image_base64: base64, fast: true, language: "uz" }),
       });
-      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: false, reason: "" }; }
+      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" }; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
-    } catch { return { block: false, reason: "" }; }
+    } catch { return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" }; }
   }
-  async function analyzeMediaUrlPreferBase64(url) {
-    if (!url) return { block: false, reason: "" };
-    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1]);
+  async function analyzeMediaUrlPreferBase64(url, failClosed = false) {
+    if (!url) return { block: failClosed, reason: failClosed ? "Media URL topilmadi — xavfsizlik bloki" : "" };
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed);
     const dataUrl = await fetchImageViaBackground(url);
-    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1]);
-    return analyzeUrl(url);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed);
+    return analyzeUrl(url, failClosed);
   }
 
   // ========== Queue ==========
@@ -620,6 +672,7 @@
     if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
     PROCESSING.set(img, url);
+    preShield(img);
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -632,18 +685,21 @@
 
     // 3. LOKAL NSFW MODEL (NSFWJS) — CORS bypass bilan
     let robustData = null;
+    let visualSuspicious = false;
     if (nsfwReady) {
       const r = await classifyRobust(url);
       if (r && r.preds) {
         if (r.dataUrl) robustData = r.dataUrl; // background fetch ishlatildi
         const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
+        if (decision?.suspicious) visualSuspicious = true;
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
           shieldElement(img, decision.reason, "local");
           return;
         }
-        if (decision?.confident && !decision.block) {
+        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious) {
           img.classList.remove("ai-radar-scanning");
+          clearPreShield(img);
           noteLocalApproved();
           return;
         }
@@ -658,16 +714,20 @@
 
     // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
     if (aiDisabled) return;
+    const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
     const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
-          result = await analyzeBase64(b64);
-        } else result = await analyzeMediaUrlPreferBase64(url);
+          result = await analyzeBase64(b64, failClosed);
+        } else result = await analyzeMediaUrlPreferBase64(url, failClosed);
         if (result.block) shieldElement(img, result.reason, "cloud");
+        else clearPreShield(img);
       });
+    } else {
+      clearPreShield(img);
     }
   }
 
@@ -682,9 +742,10 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
+    preShield(video);
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeMediaUrlPreferBase64(poster);
+        const { block, reason } = await analyzeMediaUrlPreferBase64(poster, shouldFailClosed(video, local, false));
         if (block) shieldElement(video, reason, "cloud");
         else setTimeout(() => captureFrame(video), 800);
       });
@@ -748,7 +809,7 @@
           if (r && r.preds) {
             const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST);
             if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
-            if (decision?.confident && !decision.block) { noteLocalApproved(); continue; }
+            if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); continue; }
           }
         }
 
@@ -759,6 +820,7 @@
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
+    clearPreShield(video);
   }
 
   async function sampleCurrentVideoFrame(video, W, H) {
@@ -769,13 +831,14 @@
         if (r && r.preds) {
           const decision = decideFromNsfw(r.preds, true);
           if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
-          if (decision?.confident && !decision.block) { noteLocalApproved(); return; }
+          if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); clearPreShield(video); return; }
         }
       }
-      if (aiDisabled) return;
+      if (aiDisabled) { clearPreShield(video); return; }
       const b64 = dataUrl.split(",")[1];
       const { block, reason } = await analyzeBase64(b64);
       if (block) shieldElement(video, reason, "cloud");
+      else clearPreShield(video);
     } catch {}
   }
 

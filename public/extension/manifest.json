@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Radar — Real-Time Content Shield",
-  "version": "2.1.0",
-  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.1: DOM qayta-skan, base64 cloud fallback, qat'iy metadata/video blok.",
+  "version": "2.2.0",
+  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.2: lokal model ichida, pre-block, fail-closed strict himoya.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
@@ -17,7 +17,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["nsfw-loader.js"],
+      "resources": ["nsfw-loader.js", "vendor/tf.min.js", "vendor/nsfwjs.min.js", "vendor/nsfw-model/*"],
       "matches": ["<all_urls>"]
     }
   ],
