@@ -593,11 +593,10 @@
     return { w, h };
   }
 
-  function shouldFailClosed(el, local = {}) {
-    const { w, h } = mediaVisibleSize(el);
+  function shouldFailClosed(el, local = {}, visualSignal = false) {
     if (WHITELISTED) return false;
     if (local.block || local.suspicious) return true;
-    return VISUAL_RISK_HOST && w >= 180 && h >= 180;
+    return !!visualSignal;
   }
 
   // ========== AI request ==========
