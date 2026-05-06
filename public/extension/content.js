@@ -672,6 +672,7 @@
     if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
     PROCESSING.set(img, url);
+    preShield(img);
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -694,8 +695,9 @@
           shieldElement(img, decision.reason, "local");
           return;
         }
-        if (decision?.confident && !decision.block) {
+        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious) {
           img.classList.remove("ai-radar-scanning");
+          clearPreShield(img);
           noteLocalApproved();
           return;
         }
@@ -710,16 +712,20 @@
 
     // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
     if (aiDisabled) return;
+    const failClosed = shouldFailClosed(img, local);
     const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
-          result = await analyzeBase64(b64);
-        } else result = await analyzeMediaUrlPreferBase64(url);
+          result = await analyzeBase64(b64, failClosed);
+        } else result = await analyzeMediaUrlPreferBase64(url, failClosed);
         if (result.block) shieldElement(img, result.reason, "cloud");
+        else clearPreShield(img);
       });
+    } else {
+      clearPreShield(img);
     }
   }
 
