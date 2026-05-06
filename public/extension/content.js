@@ -684,11 +684,13 @@
 
     // 3. LOKAL NSFW MODEL (NSFWJS) — CORS bypass bilan
     let robustData = null;
+    let visualSuspicious = false;
     if (nsfwReady) {
       const r = await classifyRobust(url);
       if (r && r.preds) {
         if (r.dataUrl) robustData = r.dataUrl; // background fetch ishlatildi
         const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
+        if (decision?.suspicious) visualSuspicious = true;
         if (decision?.block) {
           img.classList.remove("ai-radar-scanning");
           shieldElement(img, decision.reason, "local");
@@ -711,7 +713,7 @@
 
     // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
     if (aiDisabled) return;
-    const failClosed = shouldFailClosed(img, local);
+    const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
     const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
