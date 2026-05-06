@@ -234,6 +234,12 @@
     "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
     "купальник","нижнее белье","стринги","декольте","эрот","kupalnik","ichki kiyim"
   ];
+  const SITE_CONTAINER_SELECTORS = [
+    "article", "a", "[role='link']", "[role='button']", "[data-testid='cellInnerDiv']",
+    "[data-test-id='pin']", "[data-grid-item]", "[data-visualcompletion]",
+    "div[style*='transform']", "ytd-rich-item-renderer", "ytd-video-renderer",
+    "ytd-reel-video-renderer", "ytd-thumbnail"
+  ];
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
@@ -315,6 +321,37 @@
     const t = normalizeText(text);
     if (!t) return false;
     return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","бикини","купальник","декольте","ichki kiyim","kupalnik"].some((kw) => t.includes(kw));
+  }
+  function nearestMediaContainer(el) {
+    for (const sel of SITE_CONTAINER_SELECTORS) {
+      const found = el.closest?.(sel);
+      if (found) return found;
+    }
+    return el.parentElement || el;
+  }
+  function preShield(el, reason = "Tekshirilmoqda") {
+    if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    const r = el.getBoundingClientRect();
+    if ((r.width || el.offsetWidth || 0) < MIN_SIZE || (r.height || el.offsetHeight || 0) < MIN_SIZE) return;
+    el.dataset.aiRadarPreShield = "1";
+    const box = nearestMediaContainer(el);
+    if (!box || box.dataset.aiRadarPreShieldBox) return;
+    box.dataset.aiRadarPreShieldBox = "1";
+    box.classList.add("ai-radar-preblocked-container");
+    if (getComputedStyle(box).position === "static") box.style.position = "relative";
+    const shield = document.createElement("div");
+    shield.className = "ai-radar-pre-shield";
+    shield.textContent = `🛡️ ${reason}`;
+    box.appendChild(shield);
+  }
+  function clearPreShield(el) {
+    try {
+      delete el.dataset.aiRadarPreShield;
+      const box = nearestMediaContainer(el);
+      box?.querySelectorAll?.(":scope > .ai-radar-pre-shield").forEach((n) => n.remove());
+      box?.classList?.remove("ai-radar-preblocked-container");
+      if (box?.dataset) delete box.dataset.aiRadarPreShieldBox;
+    } catch {}
   }
   function localBlockDecision(el, url) {
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
