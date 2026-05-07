@@ -779,9 +779,13 @@
 
     const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 240;
 
-    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
-    if (aiDisabled) return;
     const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
+    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
+    if (aiDisabled) {
+      if (failClosed) shieldElement(img, "AI mavjud emas — xavfsizlik bloki", "local");
+      else clearPreShield(img);
+      return;
+    }
     const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
