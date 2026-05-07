@@ -243,7 +243,7 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, lingerie/underwear/bikini/thong/revealing clothing on a person, cleavage/buttocks/crotch/body-part focus, twerking/grinding/sexualized dance, OnlyFans/thirst-trap framing, gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people. Be decisive — harmful/sexualized content must be blocked.";
+    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, lingerie/underwear/bikini/thong/revealing clothing on a person, transparent or very tight/bodycon clothing emphasizing breasts/buttocks/crotch, cleavage/buttocks/crotch/body-part focus, twerking/grinding/sexualized dance, a woman presented mainly for male sexual attraction even if walking/talking/traveling, OnlyFans/thirst-trap framing, gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people without sexualized framing. Be decisive — harmful/sexualized content must be blocked.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -299,7 +299,7 @@ serve(async (req) => {
     // tekshirib ko'ramiz. Hard trigger bo'lsa 0.55, aks holda 0.65 yetarli.
     const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.6;
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive|underwear|bikini|thong|swimwear|cleavage|butt|crotch|twerk|grind|revealing|body.?part/.test(categoryText);
+    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive|underwear|bikini|thong|swimwear|cleavage|butt|crotch|twerk|grind|revealing|body.?part|transparent|tight|bodycon|sexual.?attraction|thirst|onlyfans/.test(categoryText);
     if (analysis.should_block) {
       const minConf = hardTrigger ? 0.48 : 0.62;
       if (conf < minConf) {
