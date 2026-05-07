@@ -1,5 +1,5 @@
 /**
- * AI Radar — Content Script v4
+ * AI Radar — Content Script v5
  * 3 qatlamli himoya:
  *   1. Whitelist/Blacklist (0ms, lokal)
  *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
@@ -14,9 +14,9 @@
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 4;
-  // v8: fail-soft safe cache bekor, visual-risk saytlar uchun qat'iyroq qayta tahlil
-  const CACHE_KEY = "__ai_radar_cache_v8__";
+  const MAX_CONCURRENT = 6;
+  // v9: oldingi "safe" cache bekor; video/visual-risk saytlar fail-closed.
+  const CACHE_KEY = "__ai_radar_cache_v9__";
   const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
@@ -111,7 +111,18 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
 
-  // v2.2: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar qat'iylashtirildi.
+  function installVisualRiskPrehide() {
+    if (!VISUAL_RISK_HOST) return;
+    try {
+      document.documentElement.classList.add("ai-radar-visual-risk");
+      const st = document.createElement("style");
+      st.textContent = `html.ai-radar-visual-risk ytd-thumbnail img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-rich-grid-media img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-video-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-reel-item-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk article img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk main img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [data-test-id='pin'] img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [role='main'] video:not([data-ai-radar-safe]):not([data-ai-radar-blocked]){filter:blur(18px)!important;opacity:.22!important;pointer-events:none!important;background:#07111f!important}`;
+      (document.head || document.documentElement).appendChild(st);
+    } catch {}
+  }
+  installVisualRiskPrehide();
+
+  // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
   function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -119,13 +130,14 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.32 : 0.48;
-    const hentaiT = strict ? 0.36 : 0.52;
+    const pornT = strict ? 0.22 : 0.40;
+    const hentaiT = strict ? 0.30 : 0.45;
     if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
     if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > (strict ? 0.42 : 0.52)) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.6 && neutral < 0.45) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (strict && sexy > 0.48) return { block: false, confident: false, suspicious: true };
+    if (porn + hentai > (strict ? 0.34 : 0.46)) return { block: true, reason: "Behayo kontent", confident: true };
+    if (strict && sexy > 0.38 && neutral < 0.72) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (!strict && sexy > 0.56 && neutral < 0.55) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (strict && sexy > 0.28) return { block: false, confident: false, suspicious: true };
     if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
     if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
     if (porn + hentai > 0.16 || sexy > 0.45) return { block: false, confident: false, suspicious: true };
