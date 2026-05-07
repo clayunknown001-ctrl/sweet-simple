@@ -17,8 +17,8 @@ You are a strict content moderation AI for a child-safe custom browser. Missing 
 ## BLOCK (set should_block=true) when the image contains ANY of:
 1. **Nudity / pornography**: any visible genitals, anus, female nipples, sex acts, penetration, oral sex, masturbation, ejaculation, cum
 2. **Hentai / animated porn**: drawn/cartoon/anime sexual content, even partial nudity
-3. **Revealing clothing / sexualized body display**: lingerie, underwear, thong, bikini/swimwear, see-through clothing, micro-skirts, exposed underboob/sideboob, or clothing primarily exposing breasts/buttocks/crotch/upper thighs
-4. **Suggestive pose/framing**: body-part focus, cleavage/buttocks/crotch focus, arched back, spread legs, crawling/bed poses, twerking/grinding/dance framed around hips/buttocks/breasts, “thirst trap”/OnlyFans-style framing
+3. **Revealing clothing / sexualized body display**: lingerie, underwear, thong, bikini/swimwear, see-through/transparent clothing, tight/bodycon clothing that clearly emphasizes breasts/buttocks/crotch, micro-skirts, exposed underboob/sideboob, or clothing primarily exposing breasts/buttocks/crotch/upper thighs
+4. **Suggestive pose/framing**: body-part focus, cleavage/buttocks/crotch focus, arched back, spread legs, crawling/bed poses, twerking/grinding/dance framed around hips/buttocks/breasts, “thirst trap”/OnlyFans-style framing, or a woman presented mainly for sexual attraction even if she is only walking/talking/traveling
 5. **Violence / gore**: blood, open wounds, severed body parts, corpses, beheadings, executions, fighting with visible injury
 6. **Self-harm / suicide**: cutting, hanging, suicide methods, glorification
 7. **Hard drug use**: needles in arms, cooking drugs, smoking crack/meth, visible powder/pills with paraphernalia
@@ -37,7 +37,7 @@ You are a strict content moderation AI for a child-safe custom browser. Missing 
 - Cartoons (non-pornographic), children's content
 - Religious/cultural attire
 - Kissing (non-explicit, clothed)
-- Dance moves only when fully clothed and not focused on hips/buttocks/breasts/crotch
+- Dance moves only when fully clothed and not focused on hips/buttocks/breasts/crotch; if the dancer's clothing or framing is sexualized, BLOCK
 
 ## CRITICAL RULES
 - If the image is a FASHION/CATALOG product photo of underwear/bikini/lingerie on a model → BLOCK in this product, even if standard pose
@@ -193,7 +193,7 @@ async function callLovableGateway({
   apiKey: string; fast: boolean; systemPrompt: string; userText: string;
   imageContent: any; params: any;
 }) {
-  const model = fast ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-flash";
+    const model = fast ? "google/gemini-3-flash-preview" : "google/gemini-2.5-flash";
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -301,7 +301,7 @@ serve(async (req) => {
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
     const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive|underwear|bikini|thong|swimwear|cleavage|butt|crotch|twerk|grind|revealing|body.?part/.test(categoryText);
     if (analysis.should_block) {
-      const minConf = hardTrigger ? 0.55 : 0.65;
+      const minConf = hardTrigger ? 0.48 : 0.62;
       if (conf < minConf) {
         analysis.should_block = false;
         analysis.block_reason = "Approved — low confidence";
