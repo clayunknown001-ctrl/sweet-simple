@@ -391,6 +391,7 @@
   function clearPreShield(el) {
     try {
       delete el.dataset.aiRadarPreShield;
+      el.dataset.aiRadarSafe = "1";
       const box = nearestMediaContainer(el);
       box?.querySelectorAll?.(":scope > .ai-radar-pre-shield").forEach((n) => n.remove());
       box?.classList?.remove("ai-radar-preblocked-container");
@@ -641,7 +642,18 @@
   function shouldFailClosed(el, local = {}, visualSignal = false) {
     if (WHITELISTED) return false;
     if (local.block || local.suspicious) return true;
+    if (VISUAL_RISK_HOST) return true;
     return !!visualSignal;
+  }
+
+  async function firstBlockingAnalysis(urls, failClosed = false) {
+    let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
+    for (const u of urls) {
+      const result = await analyzeMediaUrlPreferBase64(u, failClosed);
+      last = result;
+      if (result.block) return result;
+    }
+    return last;
   }
 
   // ========== AI request ==========
