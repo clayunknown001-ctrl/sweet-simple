@@ -914,7 +914,14 @@
   }, { rootMargin: "300px", threshold: 0.01 });
 
   function observe(el) {
-    if (el.tagName === "IMG" || el.tagName === "VIDEO") io.observe(el);
+    if (el.tagName !== "IMG" && el.tagName !== "VIDEO") return;
+    if (VISUAL_RISK_HOST && !WHITELISTED) preShield(el, "AI tekshirmoqda");
+    io.observe(el);
+    const { w, h } = mediaVisibleSize(el);
+    if (w >= MIN_SIZE && h >= MIN_SIZE) {
+      if (el.tagName === "IMG") processImage(el);
+      else processVideo(el);
+    }
   }
 
   const mo = new MutationObserver((muts) => {
@@ -950,8 +957,8 @@
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 2500);
-    console.log(`%c[AI Radar v4] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 900);
+    console.log(`%c[AI Radar v5] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
   if (document.readyState === "loading") {
