@@ -1,5 +1,5 @@
 /**
- * AI Radar — Content Script v3
+ * AI Radar — Monitor Script v5
  * 3 qatlamli himoya:
  *   1. Whitelist/Blacklist (0ms, lokal)
  *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
@@ -10,17 +10,150 @@
   if (window.__AI_RADAR_LOADED__) return;
   window.__AI_RADAR_LOADED__ = true;
 
+
+  function injectCoreStyles() {
+    if (document.getElementById("ai-radar-core-style")) return;
+    const css = document.createElement("style");
+    css.id = "ai-radar-core-style";
+    css.textContent = `
+.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:80px;background:rgba(10,15,28,.96)!important;color:#67e8f9!important;border:1px dashed rgba(103,232,249,.55)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:12px!important;text-align:center!important;pointer-events:auto!important;cursor:wait!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+    (document.head || document.documentElement).appendChild(css);
+  }
+  injectCoreStyles();
+
   const API_BASE = "https://iwyntbeqdvsbzvmskpaw.supabase.co/functions/v1";
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 3;
-  const CACHE_KEY = "__ai_radar_cache_v3__";
-  const PROCESSING = new WeakSet();
+  const MAX_CONCURRENT = 6;
+  // v9: oldingi "safe" cache bekor; video/visual-risk saytlar fail-closed.
+  const CACHE_KEY = "__ai_radar_cache_v9__";
+  const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
   let blockedCount = 0;
   let aiDisabled = false;
+  let paused = false;
+
+  // Persisted stats (chrome.storage.local)
+  const stats = { totalBlocked: 0, localBlocked: 0, cloudBlocked: 0, localApproved: 0 };
+  try {
+    chrome.storage?.local?.get?.(["totalBlocked","localBlocked","cloudBlocked","localApproved","paused"], (s) => {
+      if (!s) return;
+      stats.totalBlocked = s.totalBlocked || 0;
+      stats.localBlocked = s.localBlocked || 0;
+      stats.cloudBlocked = s.cloudBlocked || 0;
+      stats.localApproved = s.localApproved || 0;
+      paused = !!s.paused;
+      blockedCount = stats.totalBlocked;
+    });
+    chrome.storage?.onChanged?.addListener?.((changes, area) => {
+      if (area === "local" && changes.paused) paused = !!changes.paused.newValue;
+    });
+  } catch {}
+
+  function persistStats(extra = {}) {
+    try { chrome.storage?.local?.set?.({ ...stats, ...extra }); } catch {}
+  }
+  function noteLocalApproved() { stats.localApproved++; persistStats(); }
+
+  // ========== NSFW LOKAL MODEL (page-context'ga inject) ==========
+  let nsfwReady = false;
+  let nsfwReqId = 0;
+  const nsfwPending = new Map();
+  function injectNsfwLoader() {
+    try {
+      const url = chrome.runtime?.getURL?.("nsfw-loader.js");
+      if (!url) return;
+      const s = document.createElement("script");
+      s.src = url;
+      s.onload = () => s.remove();
+      (document.head || document.documentElement).appendChild(s);
+    } catch {}
+  }
+  injectNsfwLoader();
+  window.addEventListener("message", (ev) => {
+    if (!ev.data || ev.source !== window) return;
+    const m = ev.data;
+    if (m.__aiRadar === "result") {
+      const cb = nsfwPending.get(m.id);
+      if (cb) { nsfwPending.delete(m.id); cb(m); }
+    }
+  });
+  window.addEventListener("ai-radar-nsfw-ready", () => { nsfwReady = true; });
+  function classifyLocal(src, timeoutMs = 7000) {
+    return new Promise((resolve) => {
+      const id = ++nsfwReqId;
+      const timer = setTimeout(() => { nsfwPending.delete(id); resolve({ error: "timeout" }); }, timeoutMs);
+      nsfwPending.set(id, (m) => { clearTimeout(timer); resolve(m); });
+      window.postMessage({ __aiRadar: "classify", id, src }, "*");
+    });
+  }
+  function fetchImageViaBackground(url) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
+          if (chrome.runtime?.lastError) return resolve(null);
+          if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
+        });
+      } catch { resolve(null); }
+    });
+  }
+  // Avval to'g'ridan-to'g'ri, bo'lmasa background fetch (CORS bypass)
+  async function classifyRobust(url, timeoutMs = 7000) {
+    let r = await classifyLocal(url, timeoutMs);
+    if (r && r.preds) return r;
+    if (!url.startsWith("data:")) {
+      const dataUrl = await fetchImageViaBackground(url);
+      if (dataUrl) {
+        r = await classifyLocal(dataUrl, timeoutMs);
+        if (r && r.preds) return { ...r, dataUrl };
+      }
+    }
+    return r;
+  }
+  function hostMatches(domains) {
+    const host = location.hostname.toLowerCase().replace(/^www\./, "");
+    return domains.some((d) => host === d || host.endsWith("." + d));
+  }
+  const VISUAL_RISK_DOMAINS = [
+    "instagram.com", "youtube.com", "youtu.be", "pinterest.com", "tiktok.com",
+    "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
+  ];
+  const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
+
+  function installVisualRiskPrehide() {
+    if (!VISUAL_RISK_HOST) return;
+    try {
+      document.documentElement.classList.add("ai-radar-visual-risk");
+      const st = document.createElement("style");
+      st.textContent = `html.ai-radar-visual-risk ytd-thumbnail img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-rich-grid-media img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-video-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-reel-item-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk article img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk main img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [data-test-id='pin'] img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [role='main'] video:not([data-ai-radar-safe]):not([data-ai-radar-blocked]){filter:blur(18px)!important;opacity:.22!important;pointer-events:none!important;background:#07111f!important}`;
+      (document.head || document.documentElement).appendChild(st);
+    } catch {}
+  }
+  installVisualRiskPrehide();
+
+  // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
+  function decideFromNsfw(preds, strict = false) {
+    if (!preds) return null;
+    const porn = preds.Porn || 0;
+    const hentai = preds.Hentai || 0;
+    const sexy = preds.Sexy || 0;
+    const neutral = preds.Neutral || 0;
+    const drawing = preds.Drawing || 0;
+    const pornT = strict ? 0.22 : 0.40;
+    const hentaiT = strict ? 0.30 : 0.45;
+    if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
+    if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
+    if (porn + hentai > (strict ? 0.34 : 0.46)) return { block: true, reason: "Behayo kontent", confident: true };
+    if (strict && sexy > 0.38 && neutral < 0.72) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (!strict && sexy > 0.56 && neutral < 0.55) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (strict && sexy > 0.28) return { block: false, confident: false, suspicious: true };
+    if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
+    if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
+    if (porn + hentai > 0.16 || sexy > 0.45) return { block: false, confident: false, suspicious: true };
+    return { block: false, confident: true };
+  }
 
   // ========== CACHE (localStorage, 7 kun) ==========
   let CACHE = {};
@@ -53,7 +186,7 @@
   const WHITELIST_DOMAINS = [
     "wikipedia.org","wikimedia.org","github.com","stackoverflow.com","stackexchange.com",
     "google.com","gmail.com","drive.google.com","docs.google.com","calendar.google.com",
-    "youtube.com","youtu.be","khanacademy.org","coursera.org","edx.org","udemy.com",
+    "khanacademy.org","coursera.org","edx.org","udemy.com",
     "mit.edu","stanford.edu","harvard.edu","mdn.mozilla.org","developer.mozilla.org",
     "npmjs.com","nodejs.org","python.org","reactjs.org","react.dev","vuejs.org",
     "openai.com","anthropic.com","huggingface.co","kaggle.com","arxiv.org",
@@ -62,11 +195,29 @@
     "linkedin.com","medium.com","substack.com",
     "supabase.com","vercel.com","netlify.com","cloudflare.com","aws.amazon.com",
   ];
+  // Foydalanuvchi qo'shgan whitelist (popup'dan)
+  let USER_WHITELIST = [];
+  try {
+    chrome.storage?.local?.get?.(["userWhitelist"], (s) => {
+      if (Array.isArray(s?.userWhitelist)) USER_WHITELIST = s.userWhitelist;
+    });
+    chrome.storage?.onChanged?.addListener?.((c, area) => {
+      if (area === "local" && c.userWhitelist) {
+        USER_WHITELIST = Array.isArray(c.userWhitelist.newValue) ? c.userWhitelist.newValue : [];
+      }
+    });
+  } catch {}
+
   function isWhitelisted() {
     const host = location.hostname.toLowerCase();
+    const user = USER_WHITELIST.map((d) => String(d).toLowerCase());
+    if (user.some((d) => host === d || host.endsWith("." + d))) return true;
+    if (VISUAL_RISK_HOST) return false;
     return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
-  const WHITELISTED = isWhitelisted();
+  let WHITELISTED = isWhitelisted();
+  // Re-evaluate whitelist when user changes it
+  setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
   // ========== BLACKLIST (darhol blok) ==========
   const BLOCKED_DOMAINS = [
@@ -93,6 +244,28 @@
     "эскорт","стриптиз","мастурб","оргазм","анал","минет","самоубий","наркотик",
     "behayo","yalang'och","yalangoch","ichki kiyim","kupalnik","fohisha","jinsi a'zo",
   ];
+  const META_BLOCK_KEYWORDS = [
+    "porn","porno","xxx","nsfw","nude","naked","nudity","topless","onlyfans","hentai",
+    "sex tape","sex scene","sexual","stripper","strip club","camgirl","escort","fetish",
+    "boobs","tits","nipple","pussy","vagina","penis","dick","cock","masturbat","orgasm",
+    "blowjob","anal","cum","gore","behead","bloodbath","suicide","self-harm","cocaine","heroin","meth",
+    "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм",
+    "yalang'och","yalangoch","behayo","jinsi a'zo","porno","fohisha"
+  ];
+  const META_SUSPECT_KEYWORDS = [
+    "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
+    "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
+    "tight dress","yoga pants","leggings","transparent","hot girl","model","fashion model",
+    "try on haul","outfit ideas","female body","hips","ass","booty shorts","short skirt",
+    "купальник","нижнее белье","стринги","декольте","эрот","облегающ","танец","танцует",
+    "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"
+  ];
+  const SITE_CONTAINER_SELECTORS = [
+    "article", "a", "[role='link']", "[role='button']", "[data-testid='cellInnerDiv']",
+    "[data-test-id='pin']", "[data-grid-item]", "[data-visualcompletion]",
+    "div[style*='transform']", "ytd-rich-item-renderer", "ytd-video-renderer",
+    "ytd-reel-video-renderer", "ytd-thumbnail"
+  ];
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
@@ -104,6 +277,60 @@
   function normalizeText(v) {
     try { return decodeURIComponent(String(v || "")).toLowerCase().replace(/\+/g, " "); }
     catch { return String(v || "").toLowerCase(); }
+  }
+  function pickFromSrcset(srcset) {
+    if (!srcset) return "";
+    const candidates = String(srcset).split(",").map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
+    return candidates[candidates.length - 1] || "";
+  }
+  function mediaUrl(el) {
+    const srcsetUrl = pickFromSrcset(el.srcset || el.getAttribute?.("srcset"));
+    const attrs = [
+      el.currentSrc, el.src, srcsetUrl,
+      el.getAttribute?.("data-src"), el.getAttribute?.("data-original"),
+      el.getAttribute?.("data-lazy-src"), el.getAttribute?.("data-actualsrc"),
+    ];
+    return attrs.find((u) => u && u !== BLANK_PIXEL) || "";
+  }
+  function extractYouTubeId(text) {
+    const s = String(text || location.href);
+    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1]
+      || s.match(/[?&]v=([a-zA-Z0-9_-]{6,})/)?.[1]
+      || s.match(/\/shorts\/([a-zA-Z0-9_-]{6,})/)?.[1]
+      || "";
+  }
+  function extractYouTubeIdFromElement(el) {
+    const ctx = [
+      el?.src, el?.currentSrc, el?.href,
+      el?.closest?.("a")?.href,
+      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.querySelector?.("a[href]")?.href,
+      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.innerHTML?.slice(0, 1200),
+      location.href,
+    ].filter(Boolean).join(" ");
+    return extractYouTubeId(ctx);
+  }
+  function youtubeThumbs(id) {
+    if (!id) return [];
+    return [
+      `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`,
+      `https://i.ytimg.com/vi_webp/${id}/hqdefault.webp`,
+    ];
+  }
+  function analysisUrlForVideo(video) {
+    const poster = video.poster || "";
+    if (poster && !poster.startsWith("blob:")) return poster;
+    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeIdFromElement(video) : "";
+    if (yt) return youtubeThumbs(yt)[0];
+    return video.currentSrc || video.src || poster || location.href;
+  }
+  function analysisUrlsForElement(el, primaryUrl) {
+    const urls = [];
+    if (primaryUrl) urls.push(primaryUrl);
+    if (hostMatches(["youtube.com", "youtu.be"])) urls.push(...youtubeThumbs(extractYouTubeIdFromElement(el)));
+    return [...new Set(urls.filter(Boolean))];
   }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
@@ -117,14 +344,83 @@
       url, document.title, el.alt, el.title,
       el.getAttribute && el.getAttribute("aria-label"),
       el.closest && el.closest("a")?.href,
-      el.closest && el.closest("a")?.textContent,
-      el.parentElement?.textContent?.slice(0, 200),
+      el.closest && el.closest("a")?.textContent?.slice(0, 80),
+      el.closest && el.closest("article")?.textContent?.slice(0, 160),
+      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 240),
+      el.closest && el.closest("[role='link'],[role='button']")?.getAttribute?.("aria-label"),
+      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 160),
     ];
     return parts.filter(Boolean).join(" ").slice(0, 1000);
   }
+  function hasMetaBlockRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return META_BLOCK_KEYWORDS.some((kw) => t.includes(kw));
+  }
+  function hasMetaSuspectRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return META_SUSPECT_KEYWORDS.some((kw) => t.includes(kw));
+  }
+  function hasStrongMediaRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return [
+      "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
+      "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
+      "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
+      "yalang'och","yalangoch","behayo","jinsi a'zo"
+    ].some((kw) => t.includes(kw));
+  }
+  function hasSoftMediaRisk(text) {
+    const t = normalizeText(text);
+    if (!t) return false;
+    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"].some((kw) => t.includes(kw));
+  }
+  function nearestMediaContainer(el) {
+    for (const sel of SITE_CONTAINER_SELECTORS) {
+      const found = el.closest?.(sel);
+      if (found) return found;
+    }
+    return el.parentElement || el;
+  }
+  function preShield(el, reason = "Tekshirilmoqda") {
+    if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    const r = el.getBoundingClientRect();
+    if ((r.width || el.offsetWidth || 0) < MIN_SIZE || (r.height || el.offsetHeight || 0) < MIN_SIZE) return;
+    el.dataset.aiRadarPreShield = "1";
+    const box = nearestMediaContainer(el);
+    if (!box || box.dataset.aiRadarPreShieldBox) return;
+    box.dataset.aiRadarPreShieldBox = "1";
+    box.classList.add("ai-radar-preblocked-container");
+    if (getComputedStyle(box).position === "static") box.style.position = "relative";
+    const shield = document.createElement("div");
+    shield.className = "ai-radar-pre-shield";
+    shield.textContent = `🛡️ ${reason}`;
+    box.appendChild(shield);
+  }
+  function clearPreShield(el) {
+    try {
+      delete el.dataset.aiRadarPreShield;
+      el.dataset.aiRadarSafe = "1";
+      const box = nearestMediaContainer(el);
+      box?.querySelectorAll?.(":scope > .ai-radar-pre-shield").forEach((n) => n.remove());
+      box?.classList?.remove("ai-radar-preblocked-container");
+      if (box?.dataset) delete box.dataset.aiRadarPreShieldBox;
+    } catch {}
+  }
   function localBlockDecision(el, url) {
-    if (matchesRiskyUrl(url)) return { block: true, reason: "Xavfli URL" };
-    if (containsRiskyKeyword(collectContext(el, url))) return { block: true, reason: "Riskli kontekst" };
+    const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
+    const pageContext = collectContext(el, url);
+    const isTinyProfile = el.tagName === "IMG" && Math.max(el.naturalWidth || 0, el.naturalHeight || 0) < 220;
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText) || (!isTinyProfile && hasMetaBlockRisk(pageContext))) {
+      return { block: true, reason: "Xavfli matn/media belgisi" };
+    }
+    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
+      // Instagram/Pinterest/YouTube kabi saytlarda bitta caption/comment butun grid/reelsni bloklab qo'ymasligi kerak.
+      // Kontekst riskli bo'lsa visual AI'ga yuboramiz, lekin darhol hard-block qilmaymiz.
+      return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
+    }
     return { block: false };
   }
 
@@ -143,18 +439,85 @@
   // ========== HARD-BLOCK SHIELD (mutlaqo ochib bo'lmaydi) ==========
   // 1x1 transparent PNG
   const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  const STOP_EVENTS = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"];
+  const hardStop = (e) => {
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-pre-shield,.ai-radar-blocked");
+    if (!blocked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return false;
+  };
+  STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
 
-  function shieldElement(el, reason) {
+  function neutralizeContainer(el) {
+    const selectors = [
+      "a", "[role='link']", "[role='button']", "article",
+      "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-reel-video-renderer", "ytd-thumbnail",
+      "[data-test-id='pin']", "[data-grid-item]", "div[style*='transform']"
+    ];
+    const targets = new Set([el]);
+    selectors.forEach((sel) => { const t = el.closest?.(sel); if (t) targets.add(t); });
+    targets.forEach((t) => {
+      t.dataset.aiRadarBlockedContainer = "1";
+      if (t.href) { t.dataset.aiRadarOrigHref = t.href; try { t.removeAttribute("href"); } catch {} }
+      if (t.getAttribute?.("role") === "link") t.setAttribute("aria-disabled", "true");
+      try { t.style.cursor = "not-allowed"; } catch {}
+      STOP_EVENTS.forEach((evt) => t.addEventListener(evt, hardStop, { capture: true, passive: false }));
+    });
+  }
+
+  function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
+    clearPreShield(el);
+    const rectBefore = el.getBoundingClientRect();
+    neutralizeContainer(el);
     blockedCount++;
+    stats.totalBlocked = blockedCount;
+    if (source === "cloud") stats.cloudBlocked++;
+    else stats.localBlocked++;
+    const lastBlock = { reason: reason || "", host: location.hostname, ts: Date.now() };
+    // 7-kunlik ring buffer + top hostlar
+    try {
+      chrome.storage?.local?.get?.(["dailyBlocks", "hostBlocks"], (s) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const db = (s.dailyBlocks && typeof s.dailyBlocks === "object") ? { ...s.dailyBlocks } : {};
+        db[today] = (db[today] || 0) + 1;
+        const cutoff = Date.now() - 7 * 86400000;
+        for (const k of Object.keys(db)) {
+          if (new Date(k).getTime() < cutoff) delete db[k];
+        }
+        const hb = (s.hostBlocks && typeof s.hostBlocks === "object") ? { ...s.hostBlocks } : {};
+        const host = location.hostname.replace(/^www\./, "");
+        hb[host] = (hb[host] || 0) + 1;
+        // Faqat top-20 ni saqlash (storage shishmasligi uchun)
+        const trimmed = Object.entries(hb)
+          .sort((a, b) => b[1] - a[1]).slice(0, 20)
+          .reduce((acc, [k, v]) => (acc[k] = v, acc), {});
+        chrome.storage?.local?.set?.({ ...stats, lastBlock, dailyBlocks: db, hostBlocks: trimmed });
+      });
+    } catch {
+      persistStats({ lastBlock });
+    }
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
 
+    // HARD-REMOVE strategiyasi:
+    // Asl elementni butunlay yashirib, o'rniga shield div qo'yamiz.
+    // Asl element DOM'da qoladi (sayt skripti buzilmasligi uchun) lekin
+    // 0x0 o'lcham, ko'rinmas, click yo'q. Bypass mutlaqo mumkin emas.
+
     if (el.tagName === "IMG") {
-      // 1. Asl URL'ni saqlab, src'ni transparent piksel bilan almashtirish
       try {
         if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
         if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
+        const picture = el.closest?.("picture");
+        picture?.querySelectorAll?.("source").forEach((s) => {
+          if (s.srcset) s.dataset.aiRadarSrcset = s.srcset;
+          s.removeAttribute("srcset");
+          s.removeAttribute("media");
+        });
+        el.removeAttribute("sizes");
         el.src = BLANK_PIXEL;
       } catch {}
     } else if (el.tagName === "VIDEO") {
@@ -164,7 +527,6 @@
         el.removeAttribute("autoplay");
         el.removeAttribute("controls");
         if (el.src) { el.dataset.aiRadarOrig = el.src; el.removeAttribute("src"); }
-        // <source> teglarini ham o'chir
         el.querySelectorAll("source").forEach((s) => {
           s.dataset.aiRadarOrig = s.src;
           s.removeAttribute("src");
@@ -175,36 +537,74 @@
     }
 
     el.classList.add("ai-radar-blocked");
-    el.style.pointerEvents = "none";
+    el.setAttribute("aria-hidden", "true");
 
-    // Parent <a> ga ham click bloklash
-    const link = el.closest && el.closest("a");
-    if (link && !link.dataset.aiRadarBlockedLink) {
-      link.dataset.aiRadarBlockedLink = "1";
-      link.dataset.aiRadarOrigHref = link.href;
-      link.removeAttribute("href");
-      link.style.cursor = "not-allowed";
-      const blockClick = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false; };
-      link.addEventListener("click", blockClick, { capture: true });
-      link.addEventListener("mousedown", blockClick, { capture: true });
-      link.addEventListener("auxclick", blockClick, { capture: true });
+    STOP_EVENTS.forEach((evt) => {
+      el.addEventListener(evt, hardStop, { capture: true, passive: false });
+    });
+
+    // Parent <a> ni neytrallash
+    const anchor = el.closest && el.closest("a");
+    if (anchor && !anchor.dataset.aiRadarBlockedLink) {
+      anchor.dataset.aiRadarBlockedLink = "1";
+      if (anchor.href) anchor.dataset.aiRadarOrigHref = anchor.href;
+      try { anchor.removeAttribute("href"); } catch {}
+      anchor.style.cursor = "not-allowed";
+      STOP_EVENTS.forEach((evt) => {
+        anchor.addEventListener(evt, hardStop, { capture: true, passive: false });
+      });
     }
 
-    // Shield overlay
-    const parent = el.parentElement;
-    if (parent && getComputedStyle(parent).position === "static") {
-      parent.style.position = "relative";
-    }
+    // Shield qatlami: asl elementning ustiga, balandroq z-index, click bloki
+    const w = Math.max(rectBefore.width || el.offsetWidth || 200, 80);
+    const h = Math.max(rectBefore.height || el.offsetHeight || 200, 80);
+
+    // Wrapper: position relative, asl o'lchamni saqlab turish
+    const wrapper = document.createElement("div");
+    wrapper.className = "ai-radar-wrapper";
+    Object.assign(wrapper.style, {
+      position: "relative",
+      display: "inline-block",
+      width: w + "px",
+      height: h + "px",
+      overflow: "hidden",
+      verticalAlign: "middle",
+    });
+
     const shield = document.createElement("div");
     shield.className = "ai-radar-shield";
     shield.innerHTML = '<div class="icon">🛡️</div><div class="title">Bloklandi</div><div class="reason"></div>';
     shield.querySelector(".reason").textContent = (reason || "Zararli kontent").slice(0, 100);
-    const r = el.getBoundingClientRect();
-    shield.style.width = (r.width || el.offsetWidth || 200) + "px";
-    shield.style.height = (r.height || el.offsetHeight || 200) + "px";
-    // Shield'ga bosish ham hech narsa qilmaydi
-    shield.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); }, { capture: true });
-    el.insertAdjacentElement("afterend", shield);
+    Object.assign(shield.style, {
+      position: "absolute",
+      inset: "0",
+      width: "100%",
+      height: "100%",
+    });
+    STOP_EVENTS.forEach((evt) => {
+      shield.addEventListener(evt, hardStop, { capture: true, passive: false });
+    });
+
+    // Asl elementni wrapper ichiga ko'chirib, ustiga shield qo'yamiz
+    try {
+      const parent = el.parentNode;
+      if (parent) {
+        parent.insertBefore(wrapper, el);
+        // Asl elementni absolutely yashirib qo'yamiz (sayt skriptlari uchun)
+        Object.assign(el.style, {
+          position: "absolute",
+          left: "-9999px",
+          top: "-9999px",
+          width: "1px",
+          height: "1px",
+          opacity: "0",
+          visibility: "hidden",
+          pointerEvents: "none",
+        });
+        wrapper.appendChild(el);
+        wrapper.appendChild(shield);
+      }
+    } catch {}
   }
 
   // ========== LOKAL HEURISTICS: SKIN-TONE DETECTION ==========
@@ -243,9 +643,33 @@
     });
   }
 
+  function mediaVisibleSize(el) {
+    const r = el.getBoundingClientRect();
+    const w = r.width || el.offsetWidth || el.naturalWidth || el.videoWidth || 0;
+    const h = r.height || el.offsetHeight || el.naturalHeight || el.videoHeight || 0;
+    return { w, h };
+  }
+
+  function shouldFailClosed(el, local = {}, visualSignal = false) {
+    if (WHITELISTED) return false;
+    if (local.block || local.suspicious) return true;
+    if (VISUAL_RISK_HOST) return true;
+    return !!visualSignal;
+  }
+
+  async function firstBlockingAnalysis(urls, failClosed = false) {
+    let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
+    for (const u of urls) {
+      const result = await analyzeMediaUrlPreferBase64(u, failClosed);
+      last = result;
+      if (result.block) return result;
+    }
+    return last;
+  }
+
   // ========== AI request ==========
-  async function analyzeUrl(url) {
-    if (aiDisabled) return { block: false, reason: "" };
+  async function analyzeUrl(url, failClosed = false) {
+    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     const key = urlHash(url);
     if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
     try {
@@ -257,7 +681,7 @@
       if (res.status === 402 || res.status === 429) {
         aiDisabled = true;
         console.warn("[AI Radar] AI quota tugadi — lokal filtr ishlaydi");
-        return { block: false, reason: "" };
+        return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" };
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -266,22 +690,29 @@
       cacheDirty = true;
       return result;
     } catch (e) {
-      return { block: false, reason: "" };
+      return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" };
     }
   }
-  async function analyzeBase64(base64) {
-    if (aiDisabled) return { block: false, reason: "" };
+  async function analyzeBase64(base64, failClosed = false) {
+    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
         body: JSON.stringify({ image_base64: base64, fast: true, language: "uz" }),
       });
-      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: false, reason: "" }; }
+      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" }; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
-    } catch { return { block: false, reason: "" }; }
+    } catch { return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" }; }
+  }
+  async function analyzeMediaUrlPreferBase64(url, failClosed = false) {
+    if (!url) return { block: failClosed, reason: failClosed ? "Media URL topilmadi — xavfsizlik bloki" : "" };
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed);
+    const dataUrl = await fetchImageViaBackground(url);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed);
+    return analyzeUrl(url, failClosed);
   }
 
   // ========== Queue ==========
@@ -296,90 +727,195 @@
 
   // ========== Scanners ==========
   async function processImage(img) {
-    if (PROCESSING.has(img) || img.dataset.aiRadarBlocked) return;
-    const url = img.currentSrc || img.src;
-    if (!url || url === BLANK_PIXEL || url.startsWith("data:") || url.length < 10) return;
-    if (img.naturalWidth && img.naturalWidth < MIN_SIZE) return;
-    if (img.naturalHeight && img.naturalHeight < MIN_SIZE) return;
+    if (paused) return;
+    if (img.dataset.aiRadarBlocked) return;
+    const url = mediaUrl(img);
+    if (!url || url === BLANK_PIXEL || url.length < 10) return;
+    if (PROCESSING.get(img) === url) return;
+    if (!img.complete || !img.naturalWidth) {
+      img.addEventListener("load", () => processImage(img), { once: true });
+      return;
+    }
+    if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
-    PROCESSING.add(img);
+    PROCESSING.set(img, url);
+    preShield(img);
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
-    if (local.block) { shieldElement(img, local.reason); return; }
+    if (local.block) { shieldElement(img, local.reason, "local"); return; }
 
     // 2. Whitelist domain → AI'siz o'tkaz
     if (WHITELISTED) return;
 
-    // 3. Lokal skin-tone (tekin)
     img.classList.add("ai-radar-scanning");
+
+    // 3. LOKAL NSFW MODEL (NSFWJS) — CORS bypass bilan
+    let robustData = null;
+    let visualSuspicious = false;
+    if (nsfwReady) {
+      const r = await classifyRobust(url);
+      if (r && r.preds) {
+        if (r.dataUrl) robustData = r.dataUrl; // background fetch ishlatildi
+        const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
+        if (decision?.suspicious) visualSuspicious = true;
+        if (decision?.block) {
+          img.classList.remove("ai-radar-scanning");
+          shieldElement(img, decision.reason, "local");
+          return;
+        }
+        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious) {
+          img.classList.remove("ai-radar-scanning");
+          clearPreShield(img);
+          noteLocalApproved();
+          return;
+        }
+      }
+    }
+
+    // 4. Lokal skin-tone (NSFW yo'q bo'lsa fallback)
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    // Juda ko'p teri rangi + katta rasm → kuchli signal
-    if (!error && skinPct > 0.55 && img.naturalWidth >= 200) {
-      // Cloud AI bilan tasdiqlash (agar yoqilgan bo'lsa)
-      if (aiDisabled) {
-        // AI yo'q — local heuristic asosida blok (juda yuqori foiz)
-        if (skinPct > 0.7) {
-          shieldElement(img, "Ko'p ochiq teri (lokal)");
-        }
-        return;
-      }
-      enqueue(async () => {
-        const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason);
-      });
+    const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 240;
+
+    const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
+    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
+    if (aiDisabled) {
+      if (failClosed) shieldElement(img, "AI mavjud emas — xavfsizlik bloki", "local");
+      else clearPreShield(img);
       return;
     }
-
-    // 4. Past skin → katta rasmlar uchun ham tekshirish (turli turdagi xavf bo'lishi mumkin)
-    // Lekin AI quota tejash uchun: faqat ko'rinarli, katta rasmlar
-    if (aiDisabled) return;
-    if (img.naturalWidth >= 300 && img.naturalHeight >= 300) {
+    const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
+    if (shouldUseCloud) {
       enqueue(async () => {
-        const { block, reason } = await analyzeUrl(url);
-        if (block) shieldElement(img, reason);
+        let result;
+        if (robustData || url.startsWith("data:image/")) {
+          const b64 = (robustData || url).split(",")[1];
+          result = await analyzeBase64(b64, failClosed);
+        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed);
+        if (result.block) shieldElement(img, result.reason, "cloud");
+        else clearPreShield(img);
       });
+    } else {
+      clearPreShield(img);
     }
   }
 
   function processVideo(video) {
-    if (PROCESSING.has(video) || video.dataset.aiRadarBlocked) return;
-    const poster = video.poster;
-    const local = localBlockDecision(video, poster || video.currentSrc || video.src || "");
-    if (local.block) { shieldElement(video, local.reason); return; }
+    if (paused) return;
+    if (video.dataset.aiRadarBlocked) return;
+    const poster = analysisUrlForVideo(video);
+    const key = `${poster}|${video.currentSrc || video.src || ""}|${location.href}`;
+    if (PROCESSING.get(video) === key) return;
+    const local = localBlockDecision(video, poster);
+    if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
-    if (aiDisabled) return;
 
-    PROCESSING.add(video);
-    if (poster && !poster.startsWith("data:")) {
+    PROCESSING.set(video, key);
+    preShield(video);
+    const contextText = collectContext(video, poster);
+    if (local.suspicious || hasSoftMediaRisk(contextText)) {
+      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, true); }, 350);
+    }
+    if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeUrl(poster);
-        if (block) shieldElement(video, reason);
+        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, true));
+        if (block) shieldElement(video, reason, "cloud");
+        else setTimeout(() => captureFrame(video, true), 500);
       });
     } else {
-      captureFrame(video);
+      enqueue(() => captureFrame(video, true));
     }
+    video.addEventListener("playing", () => {
+      if (!video.dataset.aiRadarBlocked) {
+        setTimeout(() => captureFrame(video, true), 250);
+        setTimeout(() => captureFrame(video, true), 1200);
+        setTimeout(() => captureFrame(video, true), 3000);
+      }
+    });
   }
 
-  function captureFrame(video) {
-    if (aiDisabled) return;
+  function captureFrameDataUrl(video, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(video, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.6);
+  }
+
+  async function captureFrame(video, failClosed = false) {
+    if (paused) return;
     if (video.readyState < 2) {
-      video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
+      video.addEventListener("loadeddata", () => captureFrame(video, failClosed), { once: true });
       return;
     }
-    enqueue(async () => {
+    const W = Math.min(video.videoWidth || 256, 384);
+    const H = Math.min(video.videoHeight || 256, 384);
+
+    // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
+    if (VISUAL_RISK_HOST) {
+      await sampleCurrentVideoFrame(video, W, H, true);
+      return;
+    }
+
+    // Oddiy videolarda 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
+    const samplePoints = [];
+    const dur = isFinite(video.duration) ? video.duration : 0;
+    if (dur > 2) {
+      samplePoints.push(0, dur * 0.33, dur * 0.66);
+    } else {
+      samplePoints.push(video.currentTime || 0);
+    }
+
+    for (const t of samplePoints) {
       try {
-        const c = document.createElement("canvas");
-        c.width = Math.min(video.videoWidth || 256, 384);
-        c.height = Math.min(video.videoHeight || 256, 384);
-        c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
-        const b64 = c.toDataURL("image/jpeg", 0.6).split(",")[1];
-        const { block, reason } = await analyzeBase64(b64);
-        if (block) shieldElement(video, reason);
+        if (dur > 2 && Math.abs(video.currentTime - t) > 0.5) {
+          await new Promise((resolve) => {
+            const onSeek = () => { video.removeEventListener("seeked", onSeek); resolve(); };
+            video.addEventListener("seeked", onSeek, { once: true });
+            try { video.currentTime = t; } catch { resolve(); }
+            setTimeout(resolve, 1500);
+          });
+        }
+        const dataUrl = captureFrameDataUrl(video, W, H);
+
+        // 1. Lokal NSFW (frame'ga)
+        if (nsfwReady) {
+          const r = await classifyLocal(dataUrl, 4000);
+          if (r && r.preds) {
+            const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST);
+            if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
+            if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); continue; }
+          }
+        }
+
+        // 2. Cloud (faqat shubhali kadr)
+        if (aiDisabled) continue;
+        const b64 = dataUrl.split(",")[1];
+        const { block, reason } = await analyzeBase64(b64, failClosed);
+        if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
-    });
+    }
+    clearPreShield(video);
+  }
+
+  async function sampleCurrentVideoFrame(video, W, H, failClosed = false) {
+    try {
+      const dataUrl = captureFrameDataUrl(video, W, H);
+      if (nsfwReady) {
+        const r = await classifyLocal(dataUrl, 4000);
+        if (r && r.preds) {
+          const decision = decideFromNsfw(r.preds, true);
+          if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
+          if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); clearPreShield(video); return; }
+        }
+      }
+      if (aiDisabled) { if (failClosed) shieldElement(video, "AI mavjud emas — video xavfsizlik bloki", "local"); else clearPreShield(video); return; }
+      const b64 = dataUrl.split(",")[1];
+      const { block, reason } = await analyzeBase64(b64, failClosed);
+      if (block) shieldElement(video, reason, "cloud");
+      else clearPreShield(video);
+    } catch {}
   }
 
   const io = new IntersectionObserver((entries) => {
@@ -393,7 +929,14 @@
   }, { rootMargin: "300px", threshold: 0.01 });
 
   function observe(el) {
-    if (el.tagName === "IMG" || el.tagName === "VIDEO") io.observe(el);
+    if (el.tagName !== "IMG" && el.tagName !== "VIDEO") return;
+    if (VISUAL_RISK_HOST && !WHITELISTED) preShield(el, "AI tekshirmoqda");
+    io.observe(el);
+    const { w, h } = mediaVisibleSize(el);
+    if (w >= MIN_SIZE && h >= MIN_SIZE) {
+      if (el.tagName === "IMG") processImage(el);
+      else processVideo(el);
+    }
   }
 
   const mo = new MutationObserver((muts) => {
@@ -414,6 +957,10 @@
               else if (m.target.tagName === "VIDEO") { m.target.removeAttribute("src"); m.target.load(); }
             } catch {}
           }
+        } else {
+          observe(m.target);
+          if (m.target.tagName === "IMG") processImage(m.target);
+          else processVideo(m.target);
         }
       }
     }
@@ -425,7 +972,8 @@
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    console.log(`%c[AI Radar v3] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 900);
+    console.log(`%c[AI Radar v5] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
   if (document.readyState === "loading") {

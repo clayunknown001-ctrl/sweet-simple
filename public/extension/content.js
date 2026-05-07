@@ -1,5 +1,5 @@
 /**
- * AI Radar — Content Script v4
+ * AI Radar — Content Script v5
  * 3 qatlamli himoya:
  *   1. Whitelist/Blacklist (0ms, lokal)
  *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
@@ -14,9 +14,9 @@
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 4;
-  // v8: fail-soft safe cache bekor, visual-risk saytlar uchun qat'iyroq qayta tahlil
-  const CACHE_KEY = "__ai_radar_cache_v8__";
+  const MAX_CONCURRENT = 6;
+  // v9: oldingi "safe" cache bekor; video/visual-risk saytlar fail-closed.
+  const CACHE_KEY = "__ai_radar_cache_v9__";
   const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
   const QUEUE = [];
   let active = 0;
@@ -111,7 +111,18 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
 
-  // v2.2: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar qat'iylashtirildi.
+  function installVisualRiskPrehide() {
+    if (!VISUAL_RISK_HOST) return;
+    try {
+      document.documentElement.classList.add("ai-radar-visual-risk");
+      const st = document.createElement("style");
+      st.textContent = `html.ai-radar-visual-risk ytd-thumbnail img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-rich-grid-media img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-video-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-reel-item-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk article img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk main img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [data-test-id='pin'] img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [role='main'] video:not([data-ai-radar-safe]):not([data-ai-radar-blocked]){filter:blur(18px)!important;opacity:.22!important;pointer-events:none!important;background:#07111f!important}`;
+      (document.head || document.documentElement).appendChild(st);
+    } catch {}
+  }
+  installVisualRiskPrehide();
+
+  // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
   function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
@@ -119,13 +130,14 @@
     const sexy = preds.Sexy || 0;
     const neutral = preds.Neutral || 0;
     const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.32 : 0.48;
-    const hentaiT = strict ? 0.36 : 0.52;
+    const pornT = strict ? 0.22 : 0.40;
+    const hentaiT = strict ? 0.30 : 0.45;
     if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
     if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > (strict ? 0.42 : 0.52)) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.6 && neutral < 0.45) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (strict && sexy > 0.48) return { block: false, confident: false, suspicious: true };
+    if (porn + hentai > (strict ? 0.34 : 0.46)) return { block: true, reason: "Behayo kontent", confident: true };
+    if (strict && sexy > 0.38 && neutral < 0.72) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (!strict && sexy > 0.56 && neutral < 0.55) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
+    if (strict && sexy > 0.28) return { block: false, confident: false, suspicious: true };
     if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
     if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
     if (porn + hentai > 0.16 || sexy > 0.45) return { block: false, confident: false, suspicious: true };
@@ -232,7 +244,10 @@
   const META_SUSPECT_KEYWORDS = [
     "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
     "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
-    "купальник","нижнее белье","стринги","декольте","эрот","kupalnik","ichki kiyim"
+    "tight dress","yoga pants","leggings","transparent","hot girl","model","fashion model",
+    "try on haul","outfit ideas","female body","hips","ass","booty shorts","short skirt",
+    "купальник","нижнее белье","стринги","декольте","эрот","облегающ","танец","танцует",
+    "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"
   ];
   const SITE_CONTAINER_SELECTORS = [
     "article", "a", "[role='link']", "[role='button']", "[data-testid='cellInnerDiv']",
@@ -268,14 +283,43 @@
   }
   function extractYouTubeId(text) {
     const s = String(text || location.href);
-    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1] || "";
+    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1]
+      || s.match(/[?&]v=([a-zA-Z0-9_-]{6,})/)?.[1]
+      || s.match(/\/shorts\/([a-zA-Z0-9_-]{6,})/)?.[1]
+      || "";
+  }
+  function extractYouTubeIdFromElement(el) {
+    const ctx = [
+      el?.src, el?.currentSrc, el?.href,
+      el?.closest?.("a")?.href,
+      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.querySelector?.("a[href]")?.href,
+      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.innerHTML?.slice(0, 1200),
+      location.href,
+    ].filter(Boolean).join(" ");
+    return extractYouTubeId(ctx);
+  }
+  function youtubeThumbs(id) {
+    if (!id) return [];
+    return [
+      `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`,
+      `https://i.ytimg.com/vi_webp/${id}/hqdefault.webp`,
+    ];
   }
   function analysisUrlForVideo(video) {
     const poster = video.poster || "";
     if (poster && !poster.startsWith("blob:")) return poster;
-    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeId(location.href) : "";
-    if (yt) return `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`;
+    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeIdFromElement(video) : "";
+    if (yt) return youtubeThumbs(yt)[0];
     return video.currentSrc || video.src || poster || location.href;
+  }
+  function analysisUrlsForElement(el, primaryUrl) {
+    const urls = [];
+    if (primaryUrl) urls.push(primaryUrl);
+    if (hostMatches(["youtube.com", "youtu.be"])) urls.push(...youtubeThumbs(extractYouTubeIdFromElement(el)));
+    return [...new Set(urls.filter(Boolean))];
   }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
@@ -320,7 +364,7 @@
   function hasSoftMediaRisk(text) {
     const t = normalizeText(text);
     if (!t) return false;
-    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","бикини","купальник","декольте","ichki kiyim","kupalnik"].some((kw) => t.includes(kw));
+    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"].some((kw) => t.includes(kw));
   }
   function nearestMediaContainer(el) {
     for (const sel of SITE_CONTAINER_SELECTORS) {
@@ -347,6 +391,7 @@
   function clearPreShield(el) {
     try {
       delete el.dataset.aiRadarPreShield;
+      el.dataset.aiRadarSafe = "1";
       const box = nearestMediaContainer(el);
       box?.querySelectorAll?.(":scope > .ai-radar-pre-shield").forEach((n) => n.remove());
       box?.classList?.remove("ai-radar-preblocked-container");
@@ -597,7 +642,18 @@
   function shouldFailClosed(el, local = {}, visualSignal = false) {
     if (WHITELISTED) return false;
     if (local.block || local.suspicious) return true;
+    if (VISUAL_RISK_HOST) return true;
     return !!visualSignal;
+  }
+
+  async function firstBlockingAnalysis(urls, failClosed = false) {
+    let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
+    for (const u of urls) {
+      const result = await analyzeMediaUrlPreferBase64(u, failClosed);
+      last = result;
+      if (result.block) return result;
+    }
+    return last;
   }
 
   // ========== AI request ==========
@@ -712,9 +768,13 @@
 
     const highSkin = !error && skinPct > 0.55 && img.naturalWidth >= 240;
 
-    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
-    if (aiDisabled) return;
     const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
+    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
+    if (aiDisabled) {
+      if (failClosed) shieldElement(img, "AI mavjud emas — xavfsizlik bloki", "local");
+      else clearPreShield(img);
+      return;
+    }
     const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
     if (shouldUseCloud) {
       enqueue(async () => {
@@ -722,7 +782,7 @@
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
           result = await analyzeBase64(b64, failClosed);
-        } else result = await analyzeMediaUrlPreferBase64(url, failClosed);
+        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed);
         if (result.block) shieldElement(img, result.reason, "cloud");
         else clearPreShield(img);
       });
@@ -743,19 +803,24 @@
 
     PROCESSING.set(video, key);
     preShield(video);
+    const contextText = collectContext(video, poster);
+    if (local.suspicious || hasSoftMediaRisk(contextText)) {
+      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, true); }, 350);
+    }
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeMediaUrlPreferBase64(poster, shouldFailClosed(video, local, false));
+        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, true));
         if (block) shieldElement(video, reason, "cloud");
-        else setTimeout(() => captureFrame(video), 800);
+        else setTimeout(() => captureFrame(video, true), 500);
       });
     } else {
-      enqueue(() => captureFrame(video));
+      enqueue(() => captureFrame(video, true));
     }
     video.addEventListener("playing", () => {
       if (!video.dataset.aiRadarBlocked) {
-        setTimeout(() => captureFrame(video), 800);
-        setTimeout(() => captureFrame(video), 2400);
+        setTimeout(() => captureFrame(video, true), 250);
+        setTimeout(() => captureFrame(video, true), 1200);
+        setTimeout(() => captureFrame(video, true), 3000);
       }
     });
   }
@@ -767,10 +832,10 @@
     return c.toDataURL("image/jpeg", 0.6);
   }
 
-  async function captureFrame(video) {
+  async function captureFrame(video, failClosed = false) {
     if (paused) return;
     if (video.readyState < 2) {
-      video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
+      video.addEventListener("loadeddata", () => captureFrame(video, failClosed), { once: true });
       return;
     }
     const W = Math.min(video.videoWidth || 256, 384);
@@ -778,7 +843,7 @@
 
     // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
     if (VISUAL_RISK_HOST) {
-      await sampleCurrentVideoFrame(video, W, H);
+      await sampleCurrentVideoFrame(video, W, H, true);
       return;
     }
 
@@ -816,14 +881,14 @@
         // 2. Cloud (faqat shubhali kadr)
         if (aiDisabled) continue;
         const b64 = dataUrl.split(",")[1];
-        const { block, reason } = await analyzeBase64(b64);
+        const { block, reason } = await analyzeBase64(b64, failClosed);
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
     clearPreShield(video);
   }
 
-  async function sampleCurrentVideoFrame(video, W, H) {
+  async function sampleCurrentVideoFrame(video, W, H, failClosed = false) {
     try {
       const dataUrl = captureFrameDataUrl(video, W, H);
       if (nsfwReady) {
@@ -834,9 +899,9 @@
           if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); clearPreShield(video); return; }
         }
       }
-      if (aiDisabled) { clearPreShield(video); return; }
+      if (aiDisabled) { if (failClosed) shieldElement(video, "AI mavjud emas — video xavfsizlik bloki", "local"); else clearPreShield(video); return; }
       const b64 = dataUrl.split(",")[1];
-      const { block, reason } = await analyzeBase64(b64);
+      const { block, reason } = await analyzeBase64(b64, failClosed);
       if (block) shieldElement(video, reason, "cloud");
       else clearPreShield(video);
     } catch {}
@@ -853,7 +918,14 @@
   }, { rootMargin: "300px", threshold: 0.01 });
 
   function observe(el) {
-    if (el.tagName === "IMG" || el.tagName === "VIDEO") io.observe(el);
+    if (el.tagName !== "IMG" && el.tagName !== "VIDEO") return;
+    if (VISUAL_RISK_HOST && !WHITELISTED) preShield(el, "AI tekshirmoqda");
+    io.observe(el);
+    const { w, h } = mediaVisibleSize(el);
+    if (w >= MIN_SIZE && h >= MIN_SIZE) {
+      if (el.tagName === "IMG") processImage(el);
+      else processVideo(el);
+    }
   }
 
   const mo = new MutationObserver((muts) => {
@@ -889,8 +961,8 @@
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 2500);
-    console.log(`%c[AI Radar v4] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 900);
+    console.log(`%c[AI Radar v5] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
   if (document.readyState === "loading") {
