@@ -778,7 +778,7 @@
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
           result = await analyzeBase64(b64, failClosed);
-        } else result = await analyzeMediaUrlPreferBase64(url, failClosed);
+        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed);
         if (result.block) shieldElement(img, result.reason, "cloud");
         else clearPreShield(img);
       });
@@ -799,19 +799,24 @@
 
     PROCESSING.set(video, key);
     preShield(video);
+    const contextText = collectContext(video, poster);
+    if (local.suspicious || hasSoftMediaRisk(contextText)) {
+      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, true); }, 350);
+    }
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await analyzeMediaUrlPreferBase64(poster, shouldFailClosed(video, local, false));
+        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, true));
         if (block) shieldElement(video, reason, "cloud");
-        else setTimeout(() => captureFrame(video), 800);
+        else setTimeout(() => captureFrame(video, true), 500);
       });
     } else {
-      enqueue(() => captureFrame(video));
+      enqueue(() => captureFrame(video, true));
     }
     video.addEventListener("playing", () => {
       if (!video.dataset.aiRadarBlocked) {
-        setTimeout(() => captureFrame(video), 800);
-        setTimeout(() => captureFrame(video), 2400);
+        setTimeout(() => captureFrame(video, true), 250);
+        setTimeout(() => captureFrame(video, true), 1200);
+        setTimeout(() => captureFrame(video, true), 3000);
       }
     });
   }
@@ -823,10 +828,10 @@
     return c.toDataURL("image/jpeg", 0.6);
   }
 
-  async function captureFrame(video) {
+  async function captureFrame(video, failClosed = false) {
     if (paused) return;
     if (video.readyState < 2) {
-      video.addEventListener("loadeddata", () => captureFrame(video), { once: true });
+      video.addEventListener("loadeddata", () => captureFrame(video, failClosed), { once: true });
       return;
     }
     const W = Math.min(video.videoWidth || 256, 384);
@@ -834,7 +839,7 @@
 
     // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
     if (VISUAL_RISK_HOST) {
-      await sampleCurrentVideoFrame(video, W, H);
+      await sampleCurrentVideoFrame(video, W, H, true);
       return;
     }
 
@@ -872,14 +877,14 @@
         // 2. Cloud (faqat shubhali kadr)
         if (aiDisabled) continue;
         const b64 = dataUrl.split(",")[1];
-        const { block, reason } = await analyzeBase64(b64);
+        const { block, reason } = await analyzeBase64(b64, failClosed);
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
     clearPreShield(video);
   }
 
-  async function sampleCurrentVideoFrame(video, W, H) {
+  async function sampleCurrentVideoFrame(video, W, H, failClosed = false) {
     try {
       const dataUrl = captureFrameDataUrl(video, W, H);
       if (nsfwReady) {
@@ -890,9 +895,9 @@
           if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); clearPreShield(video); return; }
         }
       }
-      if (aiDisabled) { clearPreShield(video); return; }
+      if (aiDisabled) { if (failClosed) shieldElement(video, "AI mavjud emas — video xavfsizlik bloki", "local"); else clearPreShield(video); return; }
       const b64 = dataUrl.split(",")[1];
-      const { block, reason } = await analyzeBase64(b64);
+      const { block, reason } = await analyzeBase64(b64, failClosed);
       if (block) shieldElement(video, reason, "cloud");
       else clearPreShield(video);
     } catch {}
