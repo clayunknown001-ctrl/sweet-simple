@@ -244,7 +244,10 @@
   const META_SUSPECT_KEYWORDS = [
     "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
     "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
-    "купальник","нижнее белье","стринги","декольте","эрот","kupalnik","ichki kiyim"
+    "tight dress","yoga pants","leggings","transparent","hot girl","model","fashion model",
+    "try on haul","outfit ideas","female body","hips","ass","booty shorts","short skirt",
+    "купальник","нижнее белье","стринги","декольте","эрот","облегающ","танец","танцует",
+    "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"
   ];
   const SITE_CONTAINER_SELECTORS = [
     "article", "a", "[role='link']", "[role='button']", "[data-testid='cellInnerDiv']",
@@ -280,14 +283,43 @@
   }
   function extractYouTubeId(text) {
     const s = String(text || location.href);
-    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1] || "";
+    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1]
+      || s.match(/[?&]v=([a-zA-Z0-9_-]{6,})/)?.[1]
+      || s.match(/\/shorts\/([a-zA-Z0-9_-]{6,})/)?.[1]
+      || "";
+  }
+  function extractYouTubeIdFromElement(el) {
+    const ctx = [
+      el?.src, el?.currentSrc, el?.href,
+      el?.closest?.("a")?.href,
+      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.querySelector?.("a[href]")?.href,
+      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.innerHTML?.slice(0, 1200),
+      location.href,
+    ].filter(Boolean).join(" ");
+    return extractYouTubeId(ctx);
+  }
+  function youtubeThumbs(id) {
+    if (!id) return [];
+    return [
+      `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`,
+      `https://i.ytimg.com/vi_webp/${id}/hqdefault.webp`,
+    ];
   }
   function analysisUrlForVideo(video) {
     const poster = video.poster || "";
     if (poster && !poster.startsWith("blob:")) return poster;
-    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeId(location.href) : "";
-    if (yt) return `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`;
+    const yt = hostMatches(["youtube.com", "youtu.be"]) ? extractYouTubeIdFromElement(video) : "";
+    if (yt) return youtubeThumbs(yt)[0];
     return video.currentSrc || video.src || poster || location.href;
+  }
+  function analysisUrlsForElement(el, primaryUrl) {
+    const urls = [];
+    if (primaryUrl) urls.push(primaryUrl);
+    if (hostMatches(["youtube.com", "youtu.be"])) urls.push(...youtubeThumbs(extractYouTubeIdFromElement(el)));
+    return [...new Set(urls.filter(Boolean))];
   }
   function containsRiskyKeyword(text) {
     const t = normalizeText(text);
@@ -332,7 +364,7 @@
   function hasSoftMediaRisk(text) {
     const t = normalizeText(text);
     if (!t) return false;
-    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","бикини","купальник","декольте","ichki kiyim","kupalnik"].some((kw) => t.includes(kw));
+    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"].some((kw) => t.includes(kw));
   }
   function nearestMediaContainer(el) {
     for (const sel of SITE_CONTAINER_SELECTORS) {
