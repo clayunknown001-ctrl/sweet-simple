@@ -16,7 +16,7 @@
     const css = document.createElement("style");
     css.id = "ai-radar-core-style";
     css.textContent = `
-.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:80px;background:rgba(10,15,28,.96)!important;color:#67e8f9!important;border:1px dashed rgba(103,232,249,.55)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:12px!important;text-align:center!important;pointer-events:auto!important;cursor:wait!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-youtube-hidden-card{display:none!important;visibility:hidden!important;pointer-events:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:80px;background:rgba(10,15,28,.96)!important;color:#67e8f9!important;border:1px dashed rgba(103,232,249,.55)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:12px!important;text-align:center!important;pointer-events:auto!important;cursor:wait!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:48px!important;border-radius:6px!important;background:rgba(10,15,28,.72)!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
     (document.head || document.documentElement).appendChild(css);
   }
   injectCoreStyles();
@@ -61,12 +61,13 @@
   let nsfwReady = false;
   let nsfwReqId = 0;
   const nsfwPending = new Map();
+  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || "https://ai-lens-saga.lovable.app/extension/";
   function injectNsfwLoader() {
     try {
-      const url = chrome.runtime?.getURL?.("nsfw-loader.js");
-      if (!url) return;
+      const url = (typeof chrome !== "undefined" && chrome.runtime?.getURL?.("nsfw-loader.js")) || (MONITOR_ASSET_BASE + "nsfw-loader.js");
       const s = document.createElement("script");
       s.src = url;
+      s.crossOrigin = "anonymous";
       s.onload = () => s.remove();
       (document.head || document.documentElement).appendChild(s);
     } catch {}
@@ -92,10 +93,23 @@
   function fetchImageViaBackground(url) {
     return new Promise((resolve) => {
       try {
-        chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
-          if (chrome.runtime?.lastError) return resolve(null);
-          if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
-        });
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
+            if (chrome.runtime?.lastError) return resolve(null);
+            if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
+          });
+          return;
+        }
+        fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" })
+          .then((res) => res.ok ? res.blob() : null)
+          .then((blob) => {
+            if (!blob || blob.size > 5_000_000) return resolve(null);
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          })
+          .catch(() => resolve(null));
       } catch { resolve(null); }
     });
   }
