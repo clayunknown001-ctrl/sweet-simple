@@ -51,6 +51,11 @@
   pointer-events: none !important;
   user-select: none !important;
 }
+.ai-radar-youtube-hidden-card {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 .ai-radar-pre-shield {
   position: absolute !important;
   inset: 0 !important;
@@ -67,6 +72,12 @@
   text-align: center !important;
   pointer-events: auto !important;
   cursor: wait !important;
+}
+.ai-radar-pre-shield--compact {
+  inset: 8px !important;
+  min-height: 48px !important;
+  border-radius: 6px !important;
+  background: rgba(10, 15, 28, 0.72) !important;
 }
 .ai-radar-scanning {
   outline: 2px dashed rgba(34, 211, 238, 0.6) !important;
