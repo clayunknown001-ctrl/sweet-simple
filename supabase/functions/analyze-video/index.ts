@@ -24,10 +24,12 @@ E. SAFE CONTEXTS (avoid false positives — APPROVE):
 3. Is the context legitimate (commerce, news, education, sports, family, art)?
 4. Would this hijack the viewer's prefrontal cortex? YES → BLOCK; NO → APPROVE.
 
-## AROUSAL TRIGGERS (BLOCK with confidence > 0.65):
+## AROUSAL TRIGGERS (BLOCK with confidence > 0.42):
 - Bikini, lingerie, underwear, swimsuit (any context)
 - Cleavage / midriff emphasis, exposed thighs in non-sport context
 - See-through, body-hugging fabric outside fitness drills
+- Tight/bodycon dress, leggings/yoga pants, cosplay/outfit/look-swap/try-on/TikTok challenge when body shape is the main attraction
+- Visible breasts/buttocks/hips/crotch emphasis, even if clothed and even if the person is only walking/talking
 - Mirror selfie + minimal/tight clothing
 - Twerking, grinding, hip-thrusting, seductive choreography
 - Thirst-trap reels (camera lingers on body, not activity)
@@ -44,14 +46,14 @@ E. SAFE CONTEXTS (avoid false positives — APPROVE):
 - Horror/disturbing imagery
 - Sexual or profane on-screen text
 
-CALIBRATION: Default APPROVE. Only block when arousal/harm triggers are clearly present. Confidence > 0.65 required.
+CALIBRATION: For child-safe browsing, missing sexualized video is worse than false positive. Block arousal/framing triggers at confidence >= 0.42.
 `;
 
 function buildSystemPrompt(fast: boolean, responseLang: string) {
   const common = `You are a real-time video content moderator for a browser/OS radar protecting users from arousal-engineered and harmful content.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
-Return confidence between 0 and 1. Only block if confidence > 0.65.`;
+Return confidence between 0 and 1. Block if sexualized/revealing video confidence >= 0.42.`;
 
   return fast
     ? `${common}\nQuickly judge: do ANY frames contain a clear arousal trigger or harm category? Default APPROVE.`
@@ -236,8 +238,8 @@ serve(async (req) => {
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
     const userText = fast
-      ? "Apply calibration. Default APPROVE for normal/clothed/non-arousal-framed content. Only BLOCK with confidence>0.65 when arousal/harm triggers are clearly present in the frames."
-      : "Apply the per-frame framework. Default APPROVE; block only with strong evidence (confidence > 0.65).";
+      ? "Block if any frame has revealing/tight clothing, body-part emphasis, sexualized dance/pose, cosplay/outfit/TikTok challenge thirst-trap framing, or harm. Use threshold 0.42 for sexualized video."
+      : "Apply the per-frame framework. Block if any frame has sexualized/revealing clothing, body-part focus, or arousal-engineered framing; threshold 0.42.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -290,7 +292,7 @@ serve(async (req) => {
 
     // Confidence-gated blocking — protects against false positives
     const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
-    if (analysis.should_block && conf < 0.65) {
+    if (analysis.should_block && conf < 0.42) {
       analysis.should_block = false;
       analysis.block_reason = "Low confidence — approved";
     }
