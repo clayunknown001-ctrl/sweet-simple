@@ -17,8 +17,8 @@ You are a strict content moderation AI for a child-safe custom browser. Missing 
 ## BLOCK (set should_block=true) when the image contains ANY of:
 1. **Nudity / pornography**: any visible genitals, anus, female nipples, sex acts, penetration, oral sex, masturbation, ejaculation, cum
 2. **Hentai / animated porn**: drawn/cartoon/anime sexual content, even partial nudity
-3. **Revealing clothing / sexualized body display**: lingerie, underwear, thong, bikini/swimwear, see-through/transparent clothing, tight/bodycon clothing that clearly emphasizes breasts/buttocks/crotch, micro-skirts, exposed underboob/sideboob, or clothing primarily exposing breasts/buttocks/crotch/upper thighs
-4. **Suggestive pose/framing**: body-part focus, cleavage/buttocks/crotch focus, arched back, spread legs, crawling/bed poses, twerking/grinding/dance framed around hips/buttocks/breasts, “thirst trap”/OnlyFans-style framing, or a woman presented mainly for sexual attraction even if she is only walking/talking/traveling
+3. **Revealing clothing / sexualized body display**: lingerie, underwear, thong, bikini/swimwear, see-through/transparent clothing, tight/bodycon clothing that clearly emphasizes breasts/buttocks/crotch, leggings/yoga pants/body-hugging outfits used for attraction, micro-skirts, exposed underboob/sideboob, or clothing primarily exposing breasts/buttocks/crotch/upper thighs
+4. **Suggestive pose/framing**: body-part focus, cleavage/buttocks/crotch focus, arched back, spread legs, squatting/kneeling/bed/mirror poses, twerking/grinding/dance framed around hips/buttocks/breasts, “thirst trap”/OnlyFans/TikTok challenge/cosplay outfit framing, or a person presented mainly for sexual attraction even if walking/talking/traveling
 5. **Violence / gore**: blood, open wounds, severed body parts, corpses, beheadings, executions, fighting with visible injury
 6. **Self-harm / suicide**: cutting, hanging, suicide methods, glorification
 7. **Hard drug use**: needles in arms, cooking drugs, smoking crack/meth, visible powder/pills with paraphernalia
@@ -45,7 +45,7 @@ You are a strict content moderation AI for a child-safe custom browser. Missing 
 - "Attractive person" alone is NEVER a reason to block
 - Confidence:
   - For categories 1, 2, 5, 6, 7 (nudity, hentai, gore, self-harm, drugs): block if confidence >= 0.55
-  - For categories 3, 4 (revealing clothing / sexualized framing): block if confidence >= 0.55
+  - For categories 3, 4 (revealing clothing / sexualized framing): block if confidence >= 0.42
   - Other categories: block if confidence >= 0.65
 `;
 
@@ -243,7 +243,7 @@ serve(async (req) => {
     if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
-    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity (genitals/nipples/sex act), hentai, lingerie/underwear/bikini/thong/revealing clothing on a person, transparent or very tight/bodycon clothing emphasizing breasts/buttocks/crotch, cleavage/buttocks/crotch/body-part focus, twerking/grinding/sexualized dance, a woman presented mainly for male sexual attraction even if walking/talking/traveling, OnlyFans/thirst-trap framing, gore/blood/wounds/corpses, active violence, self-harm, hard drug use with paraphernalia, hate symbols glorified, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people without sexualized framing. Be decisive — harmful/sexualized content must be blocked.";
+    const userText = "Analyze the visible image carefully. BLOCK if you see: nudity, hentai, lingerie/underwear/bikini/thong/revealing clothing, transparent or tight/bodycon/leggings/yoga-pants clothing emphasizing breasts/buttocks/crotch, cleavage/buttocks/crotch/body-part focus, squatting/kneeling/mirror/body-showing pose, twerking/grinding/sexualized dance, cosplay/outfit/look-swap/TikTok challenge framed for attraction, a person presented mainly for sexual attraction even if walking/talking/traveling, OnlyFans/thirst-trap framing, gore/violence/self-harm/drugs/hate, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people without sexualized framing. Be decisive — sexualized or revealing human content must be blocked.";
     const params = fast ? fastParams : fullParams;
 
     let analysis: any = null;
@@ -301,7 +301,7 @@ serve(async (req) => {
     const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
     const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive|underwear|bikini|thong|swimwear|cleavage|butt|crotch|twerk|grind|revealing|body.?part|transparent|tight|bodycon|sexual.?attraction|thirst|onlyfans/.test(categoryText);
     if (analysis.should_block) {
-      const minConf = hardTrigger ? 0.48 : 0.62;
+      const minConf = hardTrigger ? 0.40 : 0.58;
       if (conf < minConf) {
         analysis.should_block = false;
         analysis.block_reason = "Approved — low confidence";
