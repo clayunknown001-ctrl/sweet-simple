@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import ModerationDecision, { type Decision } from "@/components/ModerationDecision";
 
 interface HarmfulContent {
   is_harmful: boolean;
@@ -31,6 +32,7 @@ interface TextResult {
   should_block: boolean;
   block_reason: string;
   _provider?: string;
+  _decision?: Decision;
 }
 
 const langs = [
