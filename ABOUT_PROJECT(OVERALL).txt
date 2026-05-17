@@ -1,0 +1,281 @@
+# CONTENT INSIGHT AI — FULL PROJECT CONTEXT
+
+## PROJECT NAME
+Content Insight AI
+
+---
+
+# CORE VISION
+
+Content Insight AI is an AI-powered safe internet ecosystem designed to reduce harmful digital consumption and improve online environments through intelligent filtering, realtime content analysis, and behavioral moderation systems.
+
+The long-term goal is to build:
+- a secure AI-powered browser
+- intelligent content moderation systems
+- digital wellbeing infrastructure
+- eventually a custom Android/Linux-based operating environment
+
+The project focuses on protecting users from:
+- pornography
+- addictive short-form content
+- harmful visual media
+- manipulative recommendation systems
+- dopamine-driven endless scrolling systems
+
+while still preserving:
+- educational content
+- useful communication
+- verified creators
+- productive internet usage
+
+This is NOT a full censorship system.
+It is an intelligent selective filtering ecosystem.
+
+---
+
+# CURRENT PROJECT STATE
+
+The project is currently at:
+EARLY MVP / PROTOTYPE STAGE
+
+Existing implementations:
+- Electron-based browser prototype
+- Realtime monitoring system
+- Harmful content detection logic
+- Pornographic website blocking
+- Partial harmful image/video analysis
+- Browser filtering systems
+- Supabase integration
+- Early AI moderation workflow
+
+The system already detects and blocks many harmful websites and can partially analyze visual content in realtime.
+
+---
+
+# MAIN PROBLEM THE PROJECT SOLVES
+
+Modern internet systems are optimized for:
+- engagement addiction
+- dopamine retention
+- endless consumption
+- algorithmic manipulation
+
+Current parental control systems are too simplistic because they:
+- fully block apps
+- lack contextual intelligence
+- reduce usability
+- create backlash from users
+
+Content Insight AI instead aims to:
+- intelligently analyze content
+- preserve useful functionality
+- reduce harmful exposure
+- improve digital wellbeing
+
+---
+
+# LONG-TERM GOALS
+
+## Phase 1
+Build stable AI-powered browser filtering system.
+
+## Phase 2
+Improve realtime AI moderation and behavioral analysis.
+
+## Phase 3
+Create safe internet ecosystem:
+- browser
+- extension
+- monitoring systems
+- moderation APIs
+
+## Phase 4
+Build Android/Linux-based secure OS layer.
+
+---
+
+# CURRENT TECHNOLOGY STACK
+
+## Frontend
+- React
+- TailwindCSS
+
+## Desktop
+- Electron
+
+## Backend
+- Supabase
+- Node.js / FastAPI
+
+## AI/Moderation
+- realtime monitoring
+- image analysis
+- video analysis
+- content classification
+- browser behavior analysis
+
+## Development
+- Cursor AI
+- GitHub
+- local development workflow
+
+---
+
+# IMPORTANT DEVELOPMENT PHILOSOPHY
+
+This is NOT a toy project.
+
+The system should be built:
+- modularly
+- production-oriented
+- scalable
+- maintainable
+- security-aware
+
+Avoid:
+- placeholder implementations
+- shallow UI-only features
+- fake functionality
+- dead buttons
+- unfinished backend integrations
+
+Every feature must be designed like a real production system.
+
+---
+
+# AI DEVELOPMENT RULES
+
+The AI assistant must think like:
+- senior engineer
+- product architect
+- UX designer
+- cybersecurity-aware developer
+
+The AI must:
+- think beyond the immediate request
+- detect missing systems automatically
+- identify unfinished work before new work
+- preserve architecture consistency
+- prioritize scalability and maintainability
+
+When implementing features:
+- think through full workflows
+- think about edge cases
+- think about future scaling
+- think about database implications
+- think about admin/user interactions
+
+Example:
+If implementing upload functionality:
+also think about:
+- edit/delete
+- storage
+- validation
+- thumbnails
+- permissions
+- moderation
+- scalability
+- error handling
+
+---
+
+# CURRENT MAIN PRIORITIES
+
+1. Stabilize realtime harmful-content detection
+2. Improve browser performance
+3. Optimize moderation speed
+4. Reduce false positives
+5. Improve modular architecture
+6. Improve UI/UX
+7. Create stable admin systems
+8. Improve AI workflow continuity
+
+---
+
+# IMPORTANT ARCHITECTURE RULES
+
+- Keep architecture modular
+- Avoid unnecessary rewrites
+- Avoid unnecessary dependencies
+- Maintain clean folder structure
+- Optimize performance
+- Keep systems scalable
+
+Suggested structure:
+
+/src/ai
+/src/browser
+/src/filtering
+/src/security
+/src/monitoring
+/src/backend
+/src/ui
+/src/utils
+
+---
+
+# AI RESPONSE RULES
+
+Keep responses under 2 lines unless explanation requested.
+
+Do not overexplain before implementation.
+
+Start implementation immediately.
+
+Only respond with:
+- completed
+- error
+- user action required
+
+Minimize token usage.
+
+---
+
+# CURRENT DEVELOPMENT CHALLENGES
+
+Main current problems:
+- AI context interruption
+- AI model limits
+- unfinished implementations after interrupted sessions
+- shallow AI reasoning
+- architecture consistency between different AI models
+- maintaining scalable structure while solo-building
+
+The project prioritizes:
+- AI-assisted engineering workflows
+- multi-model continuity
+- modular development systems
+
+---
+
+# FUTURE SYSTEMS
+
+Potential future systems:
+- AI behavioral analysis
+- safe recommendation engine
+- anti-addiction systems
+- parental control infrastructure
+- educational prioritization systems
+- secure communication ecosystem
+- custom Android/Linux secure environment
+
+---
+
+# DEVELOPMENT STYLE
+
+The founder prefers:
+- low-cost scalable workflows
+- AI-assisted development
+- maximum ownership/control
+- modular architecture
+- cybersecurity-focused thinking
+- long-term ecosystem building
+
+The project should evolve gradually:
+prototype → stable MVP → user adoption → ecosystem expansion
+
+---
+
+# FINAL PROJECT MISSION
+
+Build a smarter, healthier, AI-powered digital environment that protects users from harmful online systems while preserving useful and educational internet functionality.

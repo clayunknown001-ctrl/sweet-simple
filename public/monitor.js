@@ -136,6 +136,8 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
   const YOUTUBE_HOST = hostMatches(["youtube.com", "youtu.be"]);
+  const YOUTUBE_AGGRESSIVE_MODE = YOUTUBE_HOST;
+  const VIDEO_SCAN_TIMERS = new WeakMap();
   const BLOCKED_YOUTUBE_IDS = new Set();
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
@@ -353,9 +355,24 @@
     if (YOUTUBE_HOST) urls.push(...youtubeThumbs(extractYouTubeIdFromElement(el)));
     return [...new Set(urls.filter(Boolean))];
   }
-  function containsRiskyKeyword(text) {
+  const EXACT_KWS = new Set(["anal", "cum", "meth", "dick", "cock", "ass", "butt", "gore", "nude", "sex", "tits", "boobs", "hips", "dance", "model", "raqs"]);
+  function checkKeywords(text, keywords) {
     const t = normalizeText(text);
-    return t && RISKY_KEYWORDS.some((kw) => t.includes(kw));
+    if (!t) return false;
+    for (let i = 0; i < keywords.length; i++) {
+      const kw = keywords[i];
+      if (EXACT_KWS.has(kw)) {
+        const regex = new RegExp(`(?:^|[^\\p{L}])${kw}(?:[^\\p{L}]|$)`, "iu");
+        if (regex.test(t)) return true;
+      } else {
+        if (t.includes(kw)) return true;
+      }
+    }
+    return false;
+  }
+
+  function containsRiskyKeyword(text) {
+    return checkKeywords(text, RISKY_KEYWORDS);
   }
   function matchesRiskyUrl(url) {
     return RISKY_URL_PATTERNS.some((re) => re.test(url));
@@ -374,29 +391,21 @@
     return parts.filter(Boolean).join(" ").slice(0, 1000);
   }
   function hasMetaBlockRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return META_BLOCK_KEYWORDS.some((kw) => t.includes(kw));
+    return checkKeywords(text, META_BLOCK_KEYWORDS);
   }
   function hasMetaSuspectRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return META_SUSPECT_KEYWORDS.some((kw) => t.includes(kw));
+    return checkKeywords(text, META_SUSPECT_KEYWORDS);
   }
   function hasStrongMediaRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return [
+    return checkKeywords(text, [
       "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
       "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
       "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
       "yalang'och","yalangoch","behayo","jinsi a'zo"
-    ].some((kw) => t.includes(kw));
+    ]);
   }
   function hasSoftMediaRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"].some((kw) => t.includes(kw));
+    return checkKeywords(text, ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"]);
   }
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
@@ -417,7 +426,8 @@
   function preShield(el, reason = "Tekshirilmoqda") {
     if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
     const r = el.getBoundingClientRect();
-    if ((r.width || el.offsetWidth || 0) < MIN_SIZE || (r.height || el.offsetHeight || 0) < MIN_SIZE) return;
+    const min = minSizeFor(el);
+    if ((r.width || el.offsetWidth || 0) < min || (r.height || el.offsetHeight || 0) < min) return;
     el.dataset.aiRadarPreShield = "1";
     const box = nearestMediaContainer(el);
     if (!box || box.dataset.aiRadarPreShieldBox) return;
@@ -715,6 +725,10 @@
     const h = r.height || el.offsetHeight || el.naturalHeight || el.videoHeight || 0;
     return { w, h };
   }
+  function minSizeFor(el) {
+    if (YOUTUBE_AGGRESSIVE_MODE && (el?.tagName === "IMG" || el?.tagName === "VIDEO")) return 110;
+    return MIN_SIZE;
+  }
 
   function shouldFailClosed(el, local = {}, visualSignal = false) {
     if (WHITELISTED) return false;
@@ -723,10 +737,10 @@
     return !!visualSignal;
   }
 
-  async function firstBlockingAnalysis(urls, failClosed = false) {
+  async function firstBlockingAnalysis(urls, failClosed = false, fast = true) {
     let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
     for (const u of urls) {
-      const result = await analyzeMediaUrlPreferBase64(u, failClosed);
+      const result = await analyzeMediaUrlPreferBase64(u, failClosed, fast);
       last = result;
       if (result.block) return result;
     }
@@ -734,7 +748,7 @@
   }
 
   // ========== AI request ==========
-  async function analyzeUrl(url, failClosed = false) {
+  async function analyzeUrl(url, failClosed = false, fast = true) {
     if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     const key = urlHash(url);
     if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
@@ -742,7 +756,7 @@
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_url: url, fast: true, language: "uz" }),
+        body: JSON.stringify({ image_url: url, fast, language: "uz" }),
       });
       if (res.status === 402 || res.status === 429) {
         aiDisabled = true;
@@ -759,13 +773,13 @@
       return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" };
     }
   }
-  async function analyzeBase64(base64, failClosed = false) {
+  async function analyzeBase64(base64, failClosed = false, fast = true) {
     if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_base64: base64, fast: true, language: "uz" }),
+        body: JSON.stringify({ image_base64: base64, fast, language: "uz" }),
       });
       if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" }; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -773,12 +787,12 @@
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
     } catch { return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" }; }
   }
-  async function analyzeMediaUrlPreferBase64(url, failClosed = false) {
+  async function analyzeMediaUrlPreferBase64(url, failClosed = false, fast = true) {
     if (!url) return { block: failClosed, reason: failClosed ? "Media URL topilmadi — xavfsizlik bloki" : "" };
-    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed);
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed, fast);
     const dataUrl = await fetchImageViaBackground(url);
-    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed);
-    return analyzeUrl(url, failClosed);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed, fast);
+    return analyzeUrl(url, failClosed, fast);
   }
 
   // ========== Queue ==========
@@ -802,7 +816,8 @@
       img.addEventListener("load", () => processImage(img), { once: true });
       return;
     }
-    if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
+    const min = minSizeFor(img);
+    if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
     preShield(img);
@@ -862,8 +877,8 @@
         let result;
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
-          result = await analyzeBase64(b64, failClosed);
-        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed);
+          result = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
+        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed, !YOUTUBE_AGGRESSIVE_MODE);
         if (result.block) shieldElement(img, result.reason, "cloud");
         else clearPreShield(img);
       });
@@ -894,15 +909,23 @@
     }
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, true));
+        const { block, reason } = await firstBlockingAnalysis(
+          analysisUrlsForElement(video, poster),
+          shouldFailClosed(video, local, true),
+          !YOUTUBE_AGGRESSIVE_MODE,
+        );
         if (block) shieldElement(video, reason, "cloud");
         else scheduleVideoBurst(video);
       });
     } else {
       enqueue(() => captureFrame(video, true));
     }
+    if (YOUTUBE_AGGRESSIVE_MODE) startContinuousVideoScan(video);
     scheduleVideoBurst(video);
     video.addEventListener("playing", () => scheduleVideoBurst(video));
+    video.addEventListener("playing", () => { if (YOUTUBE_AGGRESSIVE_MODE) startContinuousVideoScan(video); });
+    video.addEventListener("pause", () => stopContinuousVideoScan(video));
+    video.addEventListener("ended", () => stopContinuousVideoScan(video));
   }
 
   function scheduleVideoBurst(video) {
@@ -914,6 +937,24 @@
       }, ms);
     });
     setTimeout(() => { try { delete video.dataset.aiRadarBursting; } catch {} }, 15000);
+  }
+
+  function stopContinuousVideoScan(video) {
+    const timer = VIDEO_SCAN_TIMERS.get(video);
+    if (timer) clearInterval(timer);
+    VIDEO_SCAN_TIMERS.delete(video);
+  }
+  function startContinuousVideoScan(video) {
+    if (VIDEO_SCAN_TIMERS.has(video)) return;
+    const timer = setInterval(() => {
+      if (!document.contains(video) || video.dataset.aiRadarBlocked) {
+        stopContinuousVideoScan(video);
+        return;
+      }
+      if (video.paused || video.ended || video.readyState < 2) return;
+      captureFrame(video, true);
+    }, 2200);
+    VIDEO_SCAN_TIMERS.set(video, timer);
   }
 
   function captureFrameDataUrl(video, w, h) {
@@ -972,7 +1013,7 @@
         // 2. Cloud (faqat shubhali kadr)
         if (aiDisabled) continue;
         const b64 = dataUrl.split(",")[1];
-        const { block, reason } = await analyzeBase64(b64, failClosed);
+        const { block, reason } = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
@@ -992,7 +1033,7 @@
       }
       if (aiDisabled) { if (failClosed) shieldElement(video, "AI mavjud emas — video xavfsizlik bloki", "local"); else clearPreShield(video); return; }
       const b64 = dataUrl.split(",")[1];
-      const { block, reason } = await analyzeBase64(b64, failClosed);
+      const { block, reason } = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
       if (block) shieldElement(video, reason, "cloud");
       else clearPreShield(video);
     } catch {}
@@ -1013,7 +1054,8 @@
     if (VISUAL_RISK_HOST && !WHITELISTED) preShield(el, "AI tekshirmoqda");
     io.observe(el);
     const { w, h } = mediaVisibleSize(el);
-    if (w >= MIN_SIZE && h >= MIN_SIZE) {
+    const min = minSizeFor(el);
+    if (w >= min && h >= min) {
       if (el.tagName === "IMG") processImage(el);
       else processVideo(el);
     }

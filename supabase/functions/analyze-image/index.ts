@@ -1,4 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  callOpenAIStyleToolCall,
+  openRouterHeaders,
+  parseOrder,
+} from "../_shared/openai_tool.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -238,53 +243,89 @@ serve(async (req) => {
       });
     }
 
+    const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
+    const hasAny = !!(GROQ_API_KEY || OPENROUTER_API_KEY || GEMINI_API_KEY || LOVABLE_API_KEY);
+    if (!hasAny) throw new Error("No AI provider configured");
+
+    const GROQ_VISION_MODEL = Deno.env.get("GROQ_VISION_MODEL") || "llama-3.2-11b-vision-preview";
+    const OPENROUTER_VISION_MODEL = Deno.env.get("OPENROUTER_VISION_MODEL") || "openai/gpt-4o-mini";
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
     const userText = "Analyze the visible image carefully. BLOCK if you see: nudity, hentai, lingerie/underwear/bikini/thong/revealing clothing, transparent or tight/bodycon/leggings/yoga-pants clothing emphasizing breasts/buttocks/crotch, cleavage/buttocks/crotch/body-part focus, squatting/kneeling/mirror/body-showing pose, twerking/grinding/sexualized dance, cosplay/outfit/look-swap/TikTok challenge framed for attraction, a person presented mainly for sexual attraction even if walking/talking/traveling, OnlyFans/thirst-trap framing, gore/violence/self-harm/drugs/hate, or pornographic text. APPROVE only neutral objects/scenery/products/cars and fully clothed normal people without sexualized framing. Be decisive — sexualized or revealing human content must be blocked.";
     const params = fast ? fastParams : fullParams;
 
+    const imageContent = image_base64
+      ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
+      : { type: "image_url", image_url: { url: image_url } };
+
+    const openAiUserContent = [
+      { type: "text", text: userText },
+      imageContent,
+    ];
+
+    async function callGroqVision() {
+      const { args } = await callOpenAIStyleToolCall({
+        baseUrl: "https://api.groq.com/openai/v1",
+        apiKey: GROQ_API_KEY!,
+        model: GROQ_VISION_MODEL,
+        systemPrompt,
+        userContent: openAiUserContent,
+        toolName: "return_analysis",
+        toolDescription: "Return content moderation decision",
+        parameters: params,
+      });
+      return args;
+    }
+
+    async function callOpenRouterVision() {
+      const { args } = await callOpenAIStyleToolCall({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: OPENROUTER_API_KEY!,
+        model: OPENROUTER_VISION_MODEL,
+        systemPrompt,
+        userContent: openAiUserContent,
+        toolName: "return_analysis",
+        toolDescription: "Return content moderation decision",
+        parameters: params,
+        extraHeaders: openRouterHeaders(),
+      });
+      return args;
+    }
+
+    const order = parseOrder(Deno.env.get("AI_PROVIDER_ORDER_IMAGE"), ["groq", "openrouter", "gemini", "lovable"]);
+
     let analysis: any = null;
     let providerUsed = "none";
     let firstError: any = null;
 
-    if (GEMINI_API_KEY) {
+    for (const step of order) {
+      if (analysis) break;
       try {
-        analysis = await callGoogleAIStudio({
-          apiKey: GEMINI_API_KEY, fast, systemPrompt, userText,
-          imageBase64: image_base64, imageUrl: image_url,
-          mimeType: "image/jpeg", params,
-        });
-        providerUsed = "google-ai-studio";
-      } catch (e: any) {
-        firstError = e;
-        if (e?.status !== 429) console.warn("Google AI Studio failed:", e?.message?.slice(0, 200));
-      }
-    }
-
-    if (!analysis && LOVABLE_API_KEY) {
-      const imageContent = image_base64
-        ? { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image_base64}` } }
-        : { type: "image_url", image_url: { url: image_url } };
-      try {
-        analysis = await callLovableGateway({
-          apiKey: LOVABLE_API_KEY, fast, systemPrompt, userText, imageContent, params,
-        });
-        providerUsed = "lovable-gateway";
-      } catch (e: any) {
-        if (e?.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded.", should_block: false }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        if (step === "groq" && GROQ_API_KEY) {
+          analysis = await callGroqVision();
+          providerUsed = "groq";
+        } else if (step === "openrouter" && OPENROUTER_API_KEY) {
+          analysis = await callOpenRouterVision();
+          providerUsed = "openrouter";
+        } else if (step === "gemini" && GEMINI_API_KEY) {
+          analysis = await callGoogleAIStudio({
+            apiKey: GEMINI_API_KEY, fast, systemPrompt, userText,
+            imageBase64: image_base64, imageUrl: image_url,
+            mimeType: "image/jpeg", params,
           });
-        }
-        if (e?.status === 402) {
-          return new Response(JSON.stringify({ error: "AI credits exhausted.", should_block: false }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          providerUsed = "google-ai-studio";
+        } else if (step === "lovable" && LOVABLE_API_KEY) {
+          analysis = await callLovableGateway({
+            apiKey: LOVABLE_API_KEY, fast, systemPrompt, userText, imageContent, params,
           });
+          providerUsed = "lovable-gateway";
         }
-        throw e;
+      } catch (e: any) {
+        if (!firstError) firstError = e;
+        console.warn(`Image provider ${step} failed:`, e?.message?.slice?.(0, 200) ?? e);
       }
     }
 

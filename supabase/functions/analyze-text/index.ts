@@ -1,4 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  callOpenAIStyleToolCall,
+  openRouterHeaders,
+  parseOrder,
+} from "../_shared/openai_tool.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,9 +128,16 @@ serve(async (req) => {
     };
     const responseLang = langMap[language] || "English";
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!LOVABLE_API_KEY && !GEMINI_API_KEY) throw new Error("No AI provider configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+    const hasAny = !!(GROQ_API_KEY || OPENROUTER_API_KEY || GEMINI_API_KEY || LOVABLE_API_KEY);
+    if (!hasAny) throw new Error("No AI provider configured");
+
+    const GROQ_MODEL = Deno.env.get("GROQ_MODEL") || "llama-3.3-70b-versatile";
+    const OPENROUTER_MODEL = Deno.env.get("OPENROUTER_MODEL") || "openai/gpt-4o-mini";
 
     const systemPrompt = buildSystemPrompt(responseLang);
     const schema = {
@@ -181,6 +193,35 @@ serve(async (req) => {
       throw new Error("Google: no function call");
     }
 
+    async function callGroq() {
+      const { args } = await callOpenAIStyleToolCall({
+        baseUrl: "https://api.groq.com/openai/v1",
+        apiKey: GROQ_API_KEY!,
+        model: GROQ_MODEL,
+        systemPrompt,
+        userContent: text,
+        toolName: "return_analysis",
+        toolDescription: "Return calibrated text moderation decision",
+        parameters: schema,
+      });
+      return args;
+    }
+
+    async function callOpenRouter() {
+      const { args } = await callOpenAIStyleToolCall({
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: OPENROUTER_API_KEY!,
+        model: OPENROUTER_MODEL,
+        systemPrompt,
+        userContent: text,
+        toolName: "return_analysis",
+        toolDescription: "Return calibrated text moderation decision",
+        parameters: schema,
+        extraHeaders: openRouterHeaders(),
+      });
+      return args;
+    }
+
     async function callLovable() {
       const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -208,38 +249,35 @@ serve(async (req) => {
       return JSON.parse(d.choices?.[0]?.message?.content);
     }
 
+    const order = parseOrder(Deno.env.get("AI_PROVIDER_ORDER_TEXT"), ["groq", "openrouter", "gemini", "lovable"]);
+
     let analysis: any = null;
     let providerUsed = "none";
     let firstError: any = null;
 
-    if (GEMINI_API_KEY) {
+    for (const step of order) {
+      if (analysis) break;
       try {
-        analysis = await callGoogle();
-        providerUsed = "google-ai-studio";
-        console.log("✅ Text: Google AI Studio (FREE)");
-      } catch (e: any) {
-        firstError = e;
-        console.warn("⚠️ Google failed:", e?.message);
-      }
-    }
-
-    if (!analysis && LOVABLE_API_KEY) {
-      try {
-        analysis = await callLovable();
-        providerUsed = "lovable-gateway";
-        console.log("✅ Text: Lovable Gateway (paid)");
-      } catch (e: any) {
-        if (e?.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded." }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+        if (step === "groq" && GROQ_API_KEY) {
+          analysis = await callGroq();
+          providerUsed = "groq";
+          console.log("✅ Text: Groq");
+        } else if (step === "openrouter" && OPENROUTER_API_KEY) {
+          analysis = await callOpenRouter();
+          providerUsed = "openrouter";
+          console.log("✅ Text: OpenRouter");
+        } else if (step === "gemini" && GEMINI_API_KEY) {
+          analysis = await callGoogle();
+          providerUsed = "google-ai-studio";
+          console.log("✅ Text: Google AI Studio");
+        } else if (step === "lovable" && LOVABLE_API_KEY) {
+          analysis = await callLovable();
+          providerUsed = "lovable-gateway";
+          console.log("✅ Text: Lovable Gateway");
         }
-        if (e?.status === 402) {
-          return new Response(JSON.stringify({ error: "Both AI providers exhausted." }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
+      } catch (e: any) {
         if (!firstError) firstError = e;
+        console.warn(`⚠️ Text provider ${step} failed:`, e?.message?.slice?.(0, 200) ?? e);
       }
     }
 

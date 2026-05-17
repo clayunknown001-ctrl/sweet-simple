@@ -1,4 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  callOpenAIStyleToolCall,
+  openRouterHeaders,
+  parseOrder,
+} from "../_shared/openai_tool.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -177,6 +182,31 @@ async function callGoogleAIStudio({
   throw new Error("Google AI Studio: no function call in response");
 }
 
+async function callOpenRouterVideo({
+  apiKey, fast: _fast, systemPrompt, userText, videoBase64, mimeType, params,
+}: {
+  apiKey: string; fast: boolean; systemPrompt: string; userText: string;
+  videoBase64: string; mimeType: string; params: any;
+}) {
+  const model = Deno.env.get("OPENROUTER_VIDEO_MODEL") || "openai/gpt-4o";
+  const content = [
+    { type: "text", text: userText },
+    { type: "image_url", image_url: { url: `data:${mimeType};base64,${videoBase64}` } },
+  ];
+  const { args } = await callOpenAIStyleToolCall({
+    baseUrl: "https://openrouter.ai/api/v1",
+    apiKey,
+    model,
+    systemPrompt,
+    userContent: content,
+    toolName: "return_video_analysis",
+    toolDescription: "Return video moderation decision",
+    parameters: params,
+    extraHeaders: openRouterHeaders(),
+  });
+  return args;
+}
+
 async function callLovableGateway({
   apiKey, fast, systemPrompt, userText, videoBase64, mimeType, params,
 }: {
@@ -232,9 +262,12 @@ serve(async (req) => {
     const langMap: Record<string, string> = { en: "English", uz: "O'zbek tilida (Uzbek)", ru: "Русский (Russian)" };
     const responseLang = langMap[language] || "English";
 
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!GEMINI_API_KEY && !LOVABLE_API_KEY) throw new Error("No AI provider configured");
+    if (!GEMINI_API_KEY && !OPENROUTER_API_KEY && !LOVABLE_API_KEY) {
+      throw new Error("No AI provider configured (need GEMINI, OPENROUTER, or LOVABLE for video)");
+    }
 
     const systemPrompt = buildSystemPrompt(fast, responseLang);
     const userText = fast
@@ -242,44 +275,40 @@ serve(async (req) => {
       : "Apply the per-frame framework. Block if any frame has sexualized/revealing clothing, body-part focus, or arousal-engineered framing; threshold 0.42.";
     const params = fast ? fastParams : fullParams;
 
+    const videoOrder = parseOrder(Deno.env.get("AI_PROVIDER_ORDER_VIDEO"), ["gemini", "openrouter", "lovable"]);
+
     let analysis: any = null;
     let providerUsed = "none";
     let firstError: any = null;
 
-    if (GEMINI_API_KEY) {
+    for (const step of videoOrder) {
+      if (analysis) break;
       try {
-        analysis = await callGoogleAIStudio({
-          apiKey: GEMINI_API_KEY, fast, systemPrompt, userText,
-          videoBase64: video_base64, mimeType: mime_type, params,
-        });
-        providerUsed = "google-ai-studio";
-        console.log("✅ Video: Used Google AI Studio (FREE)");
-      } catch (e: any) {
-        firstError = e;
-        console.warn("⚠️ Google AI Studio failed, falling back:", e?.message);
-      }
-    }
-
-    if (!analysis && LOVABLE_API_KEY) {
-      try {
-        analysis = await callLovableGateway({
-          apiKey: LOVABLE_API_KEY, fast, systemPrompt, userText,
-          videoBase64: video_base64, mimeType: mime_type, params,
-        });
-        providerUsed = "lovable-gateway";
-        console.log("✅ Video: Used Lovable Gateway (paid)");
-      } catch (e: any) {
-        if (e?.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        if (step === "gemini" && GEMINI_API_KEY) {
+          analysis = await callGoogleAIStudio({
+            apiKey: GEMINI_API_KEY, fast, systemPrompt, userText,
+            videoBase64: video_base64, mimeType: mime_type, params,
           });
-        }
-        if (e?.status === 402) {
-          return new Response(JSON.stringify({ error: "Both AI providers exhausted." }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          providerUsed = "google-ai-studio";
+          console.log("✅ Video: Google AI Studio");
+        } else if (step === "openrouter" && OPENROUTER_API_KEY) {
+          analysis = await callOpenRouterVideo({
+            apiKey: OPENROUTER_API_KEY, fast, systemPrompt, userText,
+            videoBase64: video_base64, mimeType: mime_type, params,
           });
+          providerUsed = "openrouter";
+          console.log("✅ Video: OpenRouter");
+        } else if (step === "lovable" && LOVABLE_API_KEY) {
+          analysis = await callLovableGateway({
+            apiKey: LOVABLE_API_KEY, fast, systemPrompt, userText,
+            videoBase64: video_base64, mimeType: mime_type, params,
+          });
+          providerUsed = "lovable-gateway";
+          console.log("✅ Video: Lovable Gateway");
         }
-        throw e;
+      } catch (e: any) {
+        if (!firstError) firstError = e;
+        console.warn(`⚠️ Video provider ${step} failed:`, e?.message);
       }
     }
 
