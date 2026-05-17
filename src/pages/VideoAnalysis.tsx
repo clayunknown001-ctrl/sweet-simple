@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import ModerationDecision, { type Decision } from "@/components/ModerationDecision";
 
 interface VideoScene {
   timestamp: string;
@@ -36,6 +37,7 @@ interface VideoResult {
   should_block?: boolean;
   block_reason?: string;
   _provider?: string;
+  _decision?: Decision;
 }
 
 const languages = [
@@ -158,6 +160,7 @@ export default function VideoAnalysis() {
 
             {result && (
               <>
+                <ModerationDecision decision={result._decision} blocked={!!(result.harmful_content?.is_harmful || result.should_block)} />
                 {result._provider && (
                   <div className="flex items-center justify-end mb-2">
                     <Badge

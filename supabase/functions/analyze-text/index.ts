@@ -4,6 +4,8 @@ import {
   openRouterHeaders,
   parseOrder,
 } from "../_shared/openai_tool.ts";
+import { runGate } from "../_shared/moderation/gate.ts";
+import { hashContent, getCached, setCached } from "../_shared/moderation/memory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -288,17 +290,22 @@ serve(async (req) => {
       });
     }
 
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
-    if (analysis.should_block && conf < 0.70) {
-      analysis.should_block = false;
-      analysis.block_reason = "Low confidence — approved by calibration gate";
-      if (analysis.harmful_content) {
-        analysis.harmful_content.is_harmful = false;
-        analysis.harmful_content.severity = "none";
-      }
-    }
+    const contentHash = await hashContent(`text:${text}`);
+    const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash });
+    setCached(contentHash, gated.analysis);
 
-    return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
+    return new Response(JSON.stringify({
+      ...gated.analysis,
+      _provider: providerUsed,
+      _decision: {
+        id: contentHash,
+        verdict: gated.verdict,
+        category: gated.category,
+        confidence: gated.confidence,
+        threshold: gated.threshold,
+        reasoning: gated.reasoning,
+      },
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -4,6 +4,8 @@ import {
   openRouterHeaders,
   parseOrder,
 } from "../_shared/openai_tool.ts";
+import { runGate } from "../_shared/moderation/gate.ts";
+import { hashContent, setCached } from "../_shared/moderation/memory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -319,14 +321,22 @@ serve(async (req) => {
       });
     }
 
-    // Confidence-gated blocking — protects against false positives
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.8;
-    if (analysis.should_block && conf < 0.42) {
-      analysis.should_block = false;
-      analysis.block_reason = "Low confidence — approved";
-    }
+    const contentHash = await hashContent(`video:${(video_base64 ?? "").slice(0, 256)}`);
+    const gated = runGate({ analysis, kind: "video", contentHash });
+    setCached(contentHash, gated.analysis);
 
-    return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
+    return new Response(JSON.stringify({
+      ...gated.analysis,
+      _provider: providerUsed,
+      _decision: {
+        id: contentHash,
+        verdict: gated.verdict,
+        category: gated.category,
+        confidence: gated.confidence,
+        threshold: gated.threshold,
+        reasoning: gated.reasoning,
+      },
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
