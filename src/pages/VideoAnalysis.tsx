@@ -37,6 +37,7 @@ interface VideoResult {
   should_block?: boolean;
   block_reason?: string;
   _provider?: string;
+  _decision?: Decision;
 }
 
 const languages = [
