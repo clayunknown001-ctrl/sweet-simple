@@ -159,6 +159,7 @@ export default function TextAnalysis() {
 
             {result && (
               <>
+                <ModerationDecision decision={result._decision} blocked={!!(result.should_block || result.harmful_content?.is_harmful)} />
                 {result._provider && (
                   <div className="flex items-center justify-end">
                     <Badge
