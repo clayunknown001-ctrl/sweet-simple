@@ -160,6 +160,7 @@ export default function VideoAnalysis() {
 
             {result && (
               <>
+                <ModerationDecision decision={result._decision} blocked={!!(result.harmful_content?.is_harmful || result.should_block)} />
                 {result._provider && (
                   <div className="flex items-center justify-end mb-2">
                     <Badge
