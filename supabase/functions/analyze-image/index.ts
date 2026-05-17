@@ -4,6 +4,8 @@ import {
   openRouterHeaders,
   parseOrder,
 } from "../_shared/openai_tool.ts";
+import { runGate } from "../_shared/moderation/gate.ts";
+import { hashContent, getCached, setCached } from "../_shared/moderation/memory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -336,21 +338,22 @@ serve(async (req) => {
       });
     }
 
-    // Soft confidence gate — modelni hurmat qilamiz, lekin past confidence'da
-    // tekshirib ko'ramiz. Hard trigger bo'lsa 0.55, aks holda 0.65 yetarli.
-    const conf = typeof analysis.confidence === "number" ? analysis.confidence : 0.6;
-    const categoryText = String([analysis.category, analysis.block_reason, ...(analysis?.harmful_content?.categories || [])].filter(Boolean).join(" ")).toLowerCase();
-    const hardTrigger = /nud|porn|genital|nipple|sex|penetrat|hentai|gore|blood|wound|corpse|weapon|self.?harm|suicide|drug|hate|swastika|behayo|zo'ravon|yalang|erotic|lingerie|seductive|underwear|bikini|thong|swimwear|cleavage|butt|crotch|twerk|grind|revealing|body.?part|transparent|tight|bodycon|sexual.?attraction|thirst|onlyfans/.test(categoryText);
-    if (analysis.should_block) {
-      const minConf = hardTrigger ? 0.40 : 0.58;
-      if (conf < minConf) {
-        analysis.should_block = false;
-        analysis.block_reason = "Approved — low confidence";
-      }
-    }
+    const contentHash = await hashContent(`image:${image_url ?? (image_base64?.slice(0, 256) ?? "")}`);
+    const gated = runGate({ analysis, kind: "image", contentHash });
+    setCached(contentHash, gated.analysis);
 
-
-    return new Response(JSON.stringify({ ...analysis, _provider: providerUsed }), {
+    return new Response(JSON.stringify({
+      ...gated.analysis,
+      _provider: providerUsed,
+      _decision: {
+        id: contentHash,
+        verdict: gated.verdict,
+        category: gated.category,
+        confidence: gated.confidence,
+        threshold: gated.threshold,
+        reasoning: gated.reasoning,
+      },
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
