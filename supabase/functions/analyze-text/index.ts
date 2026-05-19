@@ -124,7 +124,37 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const langMap: Record<string, string> = {
+    // Cache short-circuit
+    const earlyHash = await hashContent(`text:${text}`);
+    const cachedEarly = getCached(earlyHash);
+    if (cachedEarly) {
+      return new Response(JSON.stringify({ ...cachedEarly, _provider: "cache" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // LOCAL INTELLIGENCE LAYER — short-circuit clearly safe / clearly harmful
+    const local = analyzeTextLocal(text);
+    if (local.verdict === "safe" && local.confidence >= 0.85) {
+      const analysis = buildEmergencyTextAnalysis(text, language);
+      analysis.summary = "Local layer: safe content (no API call needed)";
+      const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash: earlyHash });
+      setCached(earlyHash, gated.analysis);
+      return new Response(JSON.stringify({
+        ...gated.analysis, _provider: "local-engine",
+        _decision: { id: earlyHash, verdict: gated.verdict, category: gated.category, confidence: gated.confidence, threshold: gated.threshold, reasoning: gated.reasoning },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (local.verdict === "harmful" && local.confidence >= 0.9) {
+      const analysis = buildEmergencyTextAnalysis(text, language);
+      const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash: earlyHash });
+      setCached(earlyHash, gated.analysis);
+      return new Response(JSON.stringify({
+        ...gated.analysis, _provider: "local-engine",
+        _decision: { id: earlyHash, verdict: gated.verdict, category: gated.category, confidence: gated.confidence, threshold: gated.threshold, reasoning: gated.reasoning },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
       en: "English",
       uz: "O'zbek tilida (Uzbek)",
       ru: "Русский (Russian)",
