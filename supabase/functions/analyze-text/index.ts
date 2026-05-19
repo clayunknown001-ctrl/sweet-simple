@@ -322,7 +322,7 @@ serve(async (req) => {
       providerUsed = "local-emergency";
     }
 
-    const contentHash = await hashContent(`text:${text}`);
+    const contentHash = earlyHash;
     const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash });
     setCached(contentHash, gated.analysis);
 
