@@ -61,6 +61,15 @@ function buildSystemPrompt(fast: boolean, responseLang: string) {
   const common = `You are a real-time video content moderator for a browser/OS radar protecting users from arousal-engineered and harmful content.
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
+
+## VISUAL SIGNALS (REQUIRED)
+You MUST populate visual_signals with honest 0..1 estimates aggregated across frames (0 = absent, 1 = extreme):
+skin_exposure, cleavage_emphasis, midriff_exposure, buttocks_emphasis, crotch_emphasis, thigh_exposure,
+clothing_tightness, clothing_transparency, clothing_revealing, pose_suggestiveness, camera_body_focus,
+hip_motion_emphasis, slow_sensual_motion, repeated_erotic_motion, motion_consistency.
+Also booleans: mirror_selfie, is_sport_activity, is_medical_or_educational, is_fashion_runway, is_minor_present, plus a short scene_context string.
+A downstream multi-factor scorer (exposure + emphasis + clothing + pose + framing + motion) uses these to block fully-clothed-but-sexualized content. Do not zero everything out to be safe.
+
 Return confidence between 0 and 1. Block if sexualized/revealing video confidence >= 0.42.`;
 
   return fast
