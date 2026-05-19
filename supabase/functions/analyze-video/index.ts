@@ -6,6 +6,7 @@ import {
 } from "../_shared/openai_tool.ts";
 import { runGate } from "../_shared/moderation/gate.ts";
 import { hashContent, setCached } from "../_shared/moderation/memory.ts";
+import { buildEmergencyVideoAnalysis } from "../_shared/moderation/local-engine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
