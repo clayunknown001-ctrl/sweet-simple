@@ -133,7 +133,7 @@ const fullParams = {
     block_reason: { type: "string" },
     confidence: { type: "number" },
   },
-  required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason", "confidence"],
+  required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "visual_signals", "should_block", "block_reason", "confidence"],
   additionalProperties: false,
 };
 
