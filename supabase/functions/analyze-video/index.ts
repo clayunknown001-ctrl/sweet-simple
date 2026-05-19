@@ -316,10 +316,9 @@ serve(async (req) => {
     }
 
     if (!analysis) {
-      const msg = firstError?.message || "All AI providers failed";
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.warn("⚠️ All video providers failed, using local emergency engine:", firstError?.message);
+      analysis = buildEmergencyVideoAnalysis();
+      providerUsed = "local-emergency";
     }
 
     const contentHash = await hashContent(`video:${(video_base64 ?? "").slice(0, 256)}`);
