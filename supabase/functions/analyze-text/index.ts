@@ -6,6 +6,7 @@ import {
 } from "../_shared/openai_tool.ts";
 import { runGate } from "../_shared/moderation/gate.ts";
 import { hashContent, getCached, setCached } from "../_shared/moderation/memory.ts";
+import { analyzeTextLocal, buildEmergencyTextAnalysis } from "../_shared/moderation/local-engine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,6 +121,37 @@ serve(async (req) => {
         block_reason: "",
         confidence: 1,
         _fast_path: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Cache short-circuit
+    const earlyHash = await hashContent(`text:${text}`);
+    const cachedEarly = getCached(earlyHash);
+    if (cachedEarly) {
+      return new Response(JSON.stringify({ ...cachedEarly, _provider: "cache" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // LOCAL INTELLIGENCE LAYER — short-circuit clearly safe / clearly harmful
+    const local = analyzeTextLocal(text);
+    if (local.verdict === "safe" && local.confidence >= 0.85) {
+      const analysis = buildEmergencyTextAnalysis(text, language);
+      analysis.summary = "Local layer: safe content (no API call needed)";
+      const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash: earlyHash });
+      setCached(earlyHash, gated.analysis);
+      return new Response(JSON.stringify({
+        ...gated.analysis, _provider: "local-engine",
+        _decision: { id: earlyHash, verdict: gated.verdict, category: gated.category, confidence: gated.confidence, threshold: gated.threshold, reasoning: gated.reasoning },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (local.verdict === "harmful" && local.confidence >= 0.9) {
+      const analysis = buildEmergencyTextAnalysis(text, language);
+      const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash: earlyHash });
+      setCached(earlyHash, gated.analysis);
+      return new Response(JSON.stringify({
+        ...gated.analysis, _provider: "local-engine",
+        _decision: { id: earlyHash, verdict: gated.verdict, category: gated.category, confidence: gated.confidence, threshold: gated.threshold, reasoning: gated.reasoning },
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -284,13 +316,13 @@ serve(async (req) => {
     }
 
     if (!analysis) {
-      const msg = firstError?.message || "All AI providers failed";
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // EMERGENCY LOCAL FALLBACK — all providers down; keep app working
+      console.warn("⚠️ All AI providers failed, using emergency local engine:", firstError?.message);
+      analysis = buildEmergencyTextAnalysis(text, language);
+      providerUsed = "local-emergency";
     }
 
-    const contentHash = await hashContent(`text:${text}`);
+    const contentHash = earlyHash;
     const gated = runGate({ analysis, rawInput: text, kind: "text", contentHash });
     setCached(contentHash, gated.analysis);
 

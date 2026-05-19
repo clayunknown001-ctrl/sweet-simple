@@ -6,6 +6,7 @@ import {
 } from "../_shared/openai_tool.ts";
 import { runGate } from "../_shared/moderation/gate.ts";
 import { hashContent, getCached, setCached } from "../_shared/moderation/memory.ts";
+import { analyzeUrlLocal, buildEmergencyImageAnalysis } from "../_shared/moderation/local-engine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -332,10 +333,19 @@ serve(async (req) => {
     }
 
     if (!analysis) {
-      const msg = firstError?.message || "All AI providers failed";
-      return new Response(JSON.stringify({ error: msg, should_block: false }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.warn("⚠️ All image providers failed, using local URL engine:", firstError?.message);
+      analysis = buildEmergencyImageAnalysis(image_url);
+      providerUsed = "local-emergency";
+    }
+
+    // Pre-emptive URL block (unsafe domain) — overrides if model returned safe
+    const urlLocal = analyzeUrlLocal(image_url);
+    if (urlLocal.verdict === "harmful" && urlLocal.confidence >= 0.9) {
+      analysis.should_block = true;
+      analysis.harmful_content = analysis.harmful_content || {};
+      analysis.harmful_content.is_harmful = true;
+      analysis.harmful_content.severity = "high";
+      analysis.block_reason = `Unsafe domain: ${urlLocal.signals.join(", ")}`;
     }
 
     const contentHash = await hashContent(`image:${image_url ?? (image_base64?.slice(0, 256) ?? "")}`);
