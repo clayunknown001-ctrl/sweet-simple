@@ -316,10 +316,10 @@ serve(async (req) => {
     }
 
     if (!analysis) {
-      const msg = firstError?.message || "All AI providers failed";
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // EMERGENCY LOCAL FALLBACK — all providers down; keep app working
+      console.warn("⚠️ All AI providers failed, using emergency local engine:", firstError?.message);
+      analysis = buildEmergencyTextAnalysis(text, language);
+      providerUsed = "local-emergency";
     }
 
     const contentHash = await hashContent(`text:${text}`);
