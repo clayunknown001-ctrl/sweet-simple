@@ -155,6 +155,7 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    const langMap: Record<string, string> = {
       en: "English",
       uz: "O'zbek tilida (Uzbek)",
       ru: "Русский (Russian)",
