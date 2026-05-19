@@ -63,6 +63,13 @@ function buildSystemPrompt(fast: boolean, responseLang: string) {
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
+## VISUAL SIGNALS (REQUIRED)
+You MUST populate visual_signals with 0..1 estimates (0 = absent, 1 = extreme):
+skin_exposure, cleavage_emphasis, midriff_exposure, buttocks_emphasis, crotch_emphasis, thigh_exposure,
+clothing_tightness, clothing_transparency, clothing_revealing, pose_suggestiveness, camera_body_focus.
+Also set booleans: mirror_selfie, is_sport_activity, is_medical_or_educational, is_fashion_runway, is_minor_present, and a short scene_context string ("gym", "beach", "studio", "street", "bedroom", "kitchen", etc).
+Honest estimates matter — a downstream multi-factor scorer uses these to block fully-clothed-but-sexualized content. Do NOT zero everything out to be safe.
+
 Return JSON via the function. Be decisive — if a visible person is sexualized or revealing, block. Neutral non-human content = approve.`;
   return fast ? common : common + "\nThink step-by-step before deciding.";
 }
