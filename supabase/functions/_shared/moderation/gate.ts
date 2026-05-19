@@ -7,6 +7,7 @@
 
 import { analyzeContext, isHardHarmfulSignal, type ContentCategory } from "./context.ts";
 import { getThreshold } from "./memory.ts";
+import { extractVisualSignals, scoreBehavior } from "./visual-behavior.ts";
 
 export interface GateInput {
   analysis: any;
