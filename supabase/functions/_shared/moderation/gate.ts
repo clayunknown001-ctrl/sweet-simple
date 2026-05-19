@@ -60,6 +60,21 @@ export function runGate(input: GateInput): GateOutput {
     confidence = Math.min(1, confidence * 1.1 + 0.05);
   }
 
+  const wantsBlock = !!a.should_block || !!a?.harmful_content?.is_harmful;
+  let verdict: "allow" | "warn" | "block" = "allow";
+  let reasoning = "";
+
+  // Behavior-driven block short-circuits even "safe" categories (e.g. gym vid w/ body focus)
+  if (behavior?.shouldBlock) {
+    verdict = "block";
+    reasoning = behavior.reason;
+    return {
+      analysis: { ...a, _gate: { verdict, category: ctx.category, confidence, threshold, reasoning } },
+      verdict, category: ctx.category, confidence, threshold, reasoning,
+      contentHash: input.contentHash,
+    };
+  }
+
   if (!wantsBlock) {
     verdict = "allow";
     reasoning = `Model approved (${ctx.category}).`;
