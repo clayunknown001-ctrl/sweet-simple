@@ -63,6 +63,13 @@ function buildSystemPrompt(fast: boolean, responseLang: string) {
 Response language for block_reason: ${responseLang}.
 ${reasoningLayer}
 
+## VISUAL SIGNALS (REQUIRED)
+You MUST populate visual_signals with 0..1 estimates (0 = absent, 1 = extreme):
+skin_exposure, cleavage_emphasis, midriff_exposure, buttocks_emphasis, crotch_emphasis, thigh_exposure,
+clothing_tightness, clothing_transparency, clothing_revealing, pose_suggestiveness, camera_body_focus.
+Also set booleans: mirror_selfie, is_sport_activity, is_medical_or_educational, is_fashion_runway, is_minor_present, and a short scene_context string ("gym", "beach", "studio", "street", "bedroom", "kitchen", etc).
+Honest estimates matter — a downstream multi-factor scorer uses these to block fully-clothed-but-sexualized content. Do NOT zero everything out to be safe.
+
 Return JSON via the function. Be decisive — if a visible person is sexualized or revealing, block. Neutral non-human content = approve.`;
   return fast ? common : common + "\nThink step-by-step before deciding.";
 }
@@ -104,11 +111,36 @@ const fullParams = {
       required: ["is_harmful", "severity", "categories", "details"],
       additionalProperties: false,
     },
+    visual_signals: {
+      type: "object",
+      description: "Per-axis 0..1 estimates of visual erotic/behavior signals. Use 0 if absent.",
+      properties: {
+        skin_exposure:         { type: "number" },
+        cleavage_emphasis:     { type: "number" },
+        midriff_exposure:      { type: "number" },
+        buttocks_emphasis:     { type: "number" },
+        crotch_emphasis:       { type: "number" },
+        thigh_exposure:        { type: "number" },
+        clothing_tightness:    { type: "number" },
+        clothing_transparency: { type: "number" },
+        clothing_revealing:    { type: "number" },
+        pose_suggestiveness:   { type: "number" },
+        camera_body_focus:     { type: "number" },
+        mirror_selfie:         { type: "boolean" },
+        is_sport_activity:     { type: "boolean" },
+        is_medical_or_educational: { type: "boolean" },
+        is_fashion_runway:     { type: "boolean" },
+        is_minor_present:      { type: "boolean" },
+        scene_context:         { type: "string" },
+      },
+      required: ["skin_exposure","cleavage_emphasis","midriff_exposure","buttocks_emphasis","crotch_emphasis","thigh_exposure","clothing_tightness","clothing_transparency","clothing_revealing","pose_suggestiveness","camera_body_focus","mirror_selfie","is_sport_activity","is_medical_or_educational","is_fashion_runway","is_minor_present","scene_context"],
+      additionalProperties: false,
+    },
     should_block: { type: "boolean" },
     block_reason: { type: "string" },
     confidence: { type: "number" },
   },
-  required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "should_block", "block_reason", "confidence"],
+  required: ["description", "objects", "colors", "scene_type", "mood", "text_detected", "quality", "tags", "contains_people", "estimated_people_count", "harmful_content", "visual_signals", "should_block", "block_reason", "confidence"],
   additionalProperties: false,
 };
 
