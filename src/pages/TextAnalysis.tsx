@@ -164,18 +164,10 @@ export default function TextAnalysis() {
                   <div className="flex items-center justify-end">
                     <Badge
                       variant="outline"
-                      className={`font-mono text-[10px] ${
-                        result._provider === "google-ai-studio"
-                          ? "border-primary/40 text-primary bg-primary/5"
-                          : "border-orange-500/40 text-orange-500 bg-orange-500/5"
-                      }`}
-                      title={
-                        result._provider === "google-ai-studio"
-                          ? "Bepul Google AI Studio orqali (kredit sarflanmadi)"
-                          : "Lovable AI Gateway orqali (kredit sarflandi)"
-                      }
+                      className="font-mono text-[10px] border-primary/40 text-primary bg-primary/5"
+                      title="100% lokal moderatsiya — tashqi API ishlatilmaydi"
                     >
-                      {result._provider === "google-ai-studio" ? "⚡ Bepul (Google)" : "💳 Kreditli (Lovable)"}
+                      🛡️ Local Engine
                     </Badge>
                   </div>
                 )}
