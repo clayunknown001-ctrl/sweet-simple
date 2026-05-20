@@ -164,9 +164,9 @@ export default function Extension() {
             <div className="text-sm">
               <p className="text-foreground font-bold mb-1">Texnik ma'lumot</p>
               <p className="text-muted-foreground">
-                Kengaytma har bir ko'rinadigan rasm/videoni Lovable Cloud orqali Gemini 2.5 Flash
-                AI'ga yuboradi. AI 4-bosqichli neyropsixologik mantiq bilan tahlil qiladi va
-                1% shubha bo'lsa ham bloklaydi.
+                Kengaytma har bir ko'rinadigan rasm/videoni 100% lokal moderatsiya engine
+                orqali tahlil qiladi (URL + kontekst + brauzerda ishlovchi NSFWJS modeli).
+                Tashqi AI API ishlatilmaydi — offline ishlaydi va 1% shubha bo'lsa ham bloklaydi.
               </p>
             </div>
           </div>
