@@ -125,7 +125,7 @@ export default function Index() {
           </div>
           <div className="mt-6 flex items-center gap-2 text-sm font-mono text-muted-foreground">
             <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <span>Provayder: Google AI Studio (bepul) → Lovable Gateway (kreditli) avtomatik fallback</span>
+            <span>Engine: 100% Local Moderation — tashqi API yo'q, offline ishlaydi</span>
           </div>
         </div>
       </section>
