@@ -10,6 +10,7 @@ import VideoAnalysis from "./pages/VideoAnalysis";
 import ApiDocs from "./pages/ApiDocs";
 import Extension from "./pages/Extension";
 import NotFound from "./pages/NotFound";
+import SafeNetGuard from "./components/SafeNetGuard";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/extension" element={<Extension />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <SafeNetGuard />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
