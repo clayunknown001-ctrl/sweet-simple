@@ -1,0 +1,127 @@
+import { useEffect, useRef, useState } from "react";
+import { Pose, type Results, POSE_CONNECTIONS } from "@mediapipe/pose";
+import { Camera } from "@mediapipe/camera_utils";
+import "@/lib/safenet_full.js";
+import { Shield, ShieldOff, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+declare global {
+  interface Window {
+    SafeNet?: any;
+    classifyImage?: (img: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement) => Promise<Record<string, number>>;
+  }
+}
+
+/**
+ * SafeNetGuard — webcam-based real-time NSFW + pose moderation overlay.
+ * Toggle bilan ishga tushadi; aniqlanganda butun ekranni blur qiladi.
+ * Og'ir hisoblashlar throttle qilingan (RAF emas, ~3 FPS).
+ */
+export default function SafeNetGuard() {
+  const [active, setActive] = useState(false);
+  const [blur, setBlur] = useState(false);
+  const [status, setStatus] = useState<string>("");
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraRef = useRef<Camera | null>(null);
+  const poseRef = useRef<Pose | null>(null);
+  const lastAnalyzeRef = useRef(0);
+  const busyRef = useRef(false);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const video = document.createElement("video");
+    video.style.display = "none";
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    document.body.appendChild(video);
+    videoRef.current = video;
+
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+    });
+    pose.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    poseRef.current = pose;
+
+    pose.onResults(async (results: Results) => {
+      const now = performance.now();
+      if (busyRef.current) return;
+      if (now - lastAnalyzeRef.current < 350) return; // ~3 FPS throttle
+      lastAnalyzeRef.current = now;
+      busyRef.current = true;
+      try {
+        const landmarks = results.poseLandmarks || null;
+        const out = await window.SafeNet.analyze(video, landmarks);
+        if (out?.shouldBlur) {
+          setBlur(true);
+          setStatus(
+            `Bloklandi — Porn:${(out.nsfw?.Porn ?? 0).toFixed(2)} WHR:${out.body?.whr?.toFixed(2) ?? "-"}`
+          );
+        } else {
+          setBlur(false);
+          setStatus(`Xavfsiz — Porn:${(out?.nsfw?.Porn ?? 0).toFixed(2)}`);
+        }
+      } catch {
+        /* engine isiyapti */
+      } finally {
+        busyRef.current = false;
+      }
+    });
+
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await pose.send({ image: video });
+      },
+      width: 320,
+      height: 240,
+    });
+    cameraRef.current = camera;
+    camera.start().catch((e) => setStatus("Kamera xatosi: " + e.message));
+
+    return () => {
+      try { camera.stop(); } catch {}
+      try { pose.close(); } catch {}
+      video.remove();
+      videoRef.current = null;
+      cameraRef.current = null;
+      poseRef.current = null;
+      setBlur(false);
+      setStatus("");
+    };
+  }, [active]);
+
+  return (
+    <>
+      {/* Toggle button */}
+      <button
+        onClick={() => setActive((v) => !v)}
+        className="fixed bottom-4 right-4 z-[9998] flex items-center gap-2 rounded-full border border-primary/40 bg-background/80 px-3 py-2 text-xs font-mono text-primary shadow-lg backdrop-blur hover:bg-primary/10"
+        title="SafeNet Live Guard"
+      >
+        {active ? <Shield className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+        SafeNet {active ? "ON" : "OFF"}
+        {status && <span className="ml-1 text-muted-foreground">{status}</span>}
+      </button>
+
+      {/* Fullscreen blur overlay */}
+      {blur && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-3xl bg-background/70">
+          <div className="rounded-2xl border border-destructive/40 bg-card p-6 text-center shadow-2xl max-w-sm">
+            <Shield className="mx-auto mb-3 h-10 w-10 text-destructive" />
+            <h2 className="mb-1 text-lg font-bold text-destructive">Xavfli kontent aniqlandi</h2>
+            <p className="mb-4 text-xs text-muted-foreground font-mono">{status}</p>
+            <Button size="sm" variant="outline" onClick={() => setBlur(false)}>
+              <X className="mr-1 h-3 w-3" /> Yopish
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
