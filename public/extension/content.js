@@ -405,21 +405,21 @@
     } catch {}
   }
   function localBlockDecision(el, url) {
+    // v11: faqat aniq xavfli signal bo'lsa BLOCK; aks holda — SUSPICIOUS yoki SAFE.
+    // Page-context'dan meta keywordlar endi avtomatik blok bermaydi (false-positive juda ko'p edi).
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
-    const isTinyProfile = el.tagName === "IMG" && Math.max(el.naturalWidth || 0, el.naturalHeight || 0) < 220;
-    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText) || (!isTinyProfile && hasMetaBlockRisk(pageContext))) {
-      return { block: true, reason: "Xavfli matn/media belgisi" };
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) {
+      return { block: true, reason: "Xavfli media URL/matn" };
     }
-    const ytShortsContext = YOUTUBE_HOST && (/shorts|#shorts|tiktok|reels|cosplay|outfit|lookswap|dressootd|challenge|brooke monk|big bank|boat trend|bodycon|leggings|dance|raqs/i.test(pageContext));
-    if (ytShortsContext && (hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext))) {
-      return { block: true, reason: "YouTube Shorts riskli kontekst" };
-    }
-    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
-      return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
+    // Strong meta risk faqat pageContext'da bo'lsa — suspicious deb belgilanadi,
+    // keyin NSFW model qaror beradi. Bu Instagram/Youtubedagi soxta bloklarni kamaytiradi.
+    if (hasStrongMediaRisk(pageContext) || hasMetaBlockRisk(pageContext) || hasSoftMediaRisk(mediaText) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
+      return { block: false, suspicious: true, reason: "Riskli kontekst" };
     }
     return { block: false };
   }
+
 
   // ========== Domen blok ==========
   if (isBlockedDomain()) {
