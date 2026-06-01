@@ -13,7 +13,7 @@
   const API_BASE = "https://iwyntbeqdvsbzvmskpaw.supabase.co/functions/v1";
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
-  const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
+  const MIN_SIZE = 200; // Smart Filter: kichik logolar/avatarlar/ikonlarni umuman tekshirma
   const MAX_CONCURRENT = 8;
   // v10: YouTube card-level hard block + stricter video fail-closed cache.
   const CACHE_KEY = "__ai_radar_cache_v10__";
@@ -125,27 +125,19 @@
   }
   installVisualRiskPrehide();
 
-  // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
-  function decideFromNsfw(preds, strict = false) {
+  // Smart Filter: faqat yuqori ishonchli (>0.85) Porn/Hentai bloklanadi.
+  // Past yoki shubhali qiymatlar — hech narsa qilinmaydi (false-positive'larni keskin kamaytirish).
+  function decideFromNsfw(preds, _strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
     const hentai = preds.Hentai || 0;
-    const sexy = preds.Sexy || 0;
-    const neutral = preds.Neutral || 0;
-    const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.16 : 0.34;
-    const hentaiT = strict ? 0.24 : 0.40;
-    if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
-    if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > (strict ? 0.34 : 0.46)) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.26 && neutral < 0.86) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (!strict && sexy > 0.48 && neutral < 0.68) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (strict && sexy > 0.18) return { block: false, confident: false, suspicious: true };
-    if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
-    if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
-    if (porn + hentai > 0.11 || sexy > 0.32) return { block: false, confident: false, suspicious: true };
-    return { block: false, confident: true };
+    const score = Math.max(porn, hentai);
+    if (score > 0.85) {
+      return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score };
+    }
+    return { block: false, confident: true, score };
   }
+
 
   // ========== CACHE (localStorage, 7 kun) ==========
   let CACHE = {};
@@ -463,8 +455,21 @@
     const id = extractYouTubeId(a.href);
     return !!id && BLOCKED_YOUTUBE_IDS.has(id);
   }
+  // Smart Filter: shield ustiga bosilsa — blur'ni ochib/yopib qo'yamiz (foydalanuvchi xohlasa ko'rsin).
+  const shieldToggle = (e) => {
+    const sh = e.target?.closest?.(".ai-radar-shield");
+    if (!sh) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    sh.classList.toggle("ai-radar-revealed");
+    return false;
+  };
+  document.addEventListener("click", shieldToggle, { capture: true, passive: false });
+
   const hardStop = (e) => {
-    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
+    if (e.target?.closest?.(".ai-radar-shield")) return; // shield bosilishi shieldToggle'da
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
     if (!blocked && !isBlockedYoutubeNavigation(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -472,6 +477,7 @@
     return false;
   };
   STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
+
 
   function neutralizeContainer(el) {
     rememberBlockedYoutube(el);
