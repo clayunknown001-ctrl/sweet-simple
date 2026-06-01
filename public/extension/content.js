@@ -794,10 +794,11 @@
   // ========== Scanners ==========
   async function processImage(img) {
     if (paused) return;
-    if (img.dataset.aiRadarBlocked) return;
+    if (img.dataset.aiRadarBlocked || img.dataset.aiRadarSafe) return;
     const url = mediaUrl(img);
     if (!url || url === BLANK_PIXEL || url.length < 10) return;
     if (PROCESSING.get(img) === url) return;
+    if (alreadyAnalyzed(img, url)) { img.dataset.aiRadarSafe = "1"; return; }
     if (!img.complete || !img.naturalWidth) {
       img.addEventListener("load", () => processImage(img), { once: true });
       return;
@@ -805,6 +806,8 @@
     if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
 
     PROCESSING.set(img, url);
+    rememberAnalyzed(img, url);
+
     preShield(img);
 
     // 1. Local URL/keyword
