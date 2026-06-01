@@ -695,14 +695,15 @@
   }
 
   function shouldFailClosed(el, local = {}, visualSignal = false) {
+    // v11: VISUAL_RISK_HOST yolg'iz holda fail-closed bermaydi.
+    // Faqat lokal/visual signal mavjud bo'lsa AI tekshirilmaganda bloklaymiz.
     if (WHITELISTED) return false;
-    if (local.block || local.suspicious) return true;
-    if (VISUAL_RISK_HOST) return true;
-    return !!visualSignal;
+    if (local.block) return true;
+    return !!visualSignal && !!local.suspicious;
   }
 
   async function firstBlockingAnalysis(urls, failClosed = false) {
-    let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
+    let last = { block: false, reason: "" };
     for (const u of urls) {
       const result = await analyzeMediaUrlPreferBase64(u, failClosed);
       last = result;
@@ -710,6 +711,7 @@
     }
     return last;
   }
+
 
   // ========== AI request ==========
   async function analyzeUrl(url, failClosed = false) {
