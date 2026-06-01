@@ -13,7 +13,7 @@
   const API_BASE = "https://iwyntbeqdvsbzvmskpaw.supabase.co/functions/v1";
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
 
-  const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
+  const MIN_SIZE = 200; // Smart Filter: kichik logolar/avatarlar/ikonlarni umuman tekshirma
   const MAX_CONCURRENT = 8;
   // v10: YouTube card-level hard block + stricter video fail-closed cache.
   const CACHE_KEY = "__ai_radar_cache_v10__";
