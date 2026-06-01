@@ -911,13 +911,15 @@
   function scheduleVideoBurst(video) {
     if (video.dataset.aiRadarBursting) return;
     video.dataset.aiRadarBursting = "1";
-    [120, 450, 900, 1600, 2600, 4200, 6500, 9500, 13000].forEach((ms) => {
+    // v11: 9 ta frame → 2 ta (CPU yukini ~5x kamaytiradi).
+    [600, 3000].forEach((ms) => {
       setTimeout(() => {
-        if (!video.dataset.aiRadarBlocked && document.contains(video)) captureFrame(video, true);
+        if (!video.dataset.aiRadarBlocked && document.contains(video)) captureFrame(video, false);
       }, ms);
     });
-    setTimeout(() => { try { delete video.dataset.aiRadarBursting; } catch {} }, 15000);
+    setTimeout(() => { try { delete video.dataset.aiRadarBursting; } catch {} }, 8000);
   }
+
 
   function captureFrameDataUrl(video, w, h) {
     const c = document.createElement("canvas");
