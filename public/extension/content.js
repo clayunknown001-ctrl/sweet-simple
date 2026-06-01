@@ -761,8 +761,27 @@
     return analyzeUrl(url, failClosed);
   }
 
-  // ========== Queue ==========
-  function enqueue(task) { QUEUE.push(task); drain(); }
+  // ========== Queue (cap + dedup) ==========
+  const MAX_QUEUE = 60;
+  const ANALYZED_KEYS = new Set(); // url-hash | yt:videoId — bir marta tekshirildi
+  function markAnalyzed(...keys) { keys.filter(Boolean).forEach((k) => ANALYZED_KEYS.add(k)); if (ANALYZED_KEYS.size > 4000) { const it = ANALYZED_KEYS.values(); for (let i = 0; i < 1000; i++) ANALYZED_KEYS.delete(it.next().value); } }
+  function alreadyAnalyzed(el, url) {
+    const k1 = url ? urlHash(url) : "";
+    const ytId = YOUTUBE_HOST ? extractYouTubeIdFromElement(el) : "";
+    const k2 = ytId ? "yt:" + ytId : "";
+    if (k1 && ANALYZED_KEYS.has(k1)) return true;
+    if (k2 && ANALYZED_KEYS.has(k2)) return true;
+    return false;
+  }
+  function rememberAnalyzed(el, url) {
+    const k1 = url ? urlHash(url) : "";
+    const ytId = YOUTUBE_HOST ? extractYouTubeIdFromElement(el) : "";
+    markAnalyzed(k1, ytId ? "yt:" + ytId : "");
+  }
+  function enqueue(task) {
+    if (QUEUE.length >= MAX_QUEUE) return; // ortiqcha yukni tashlab yuborish
+    QUEUE.push(task); drain();
+  }
   function drain() {
     while (active < MAX_CONCURRENT && QUEUE.length) {
       const t = QUEUE.shift();
@@ -770,6 +789,7 @@
       t().finally(() => { active--; drain(); });
     }
   }
+
 
   // ========== Scanners ==========
   async function processImage(img) {
