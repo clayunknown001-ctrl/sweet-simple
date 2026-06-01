@@ -7,32 +7,40 @@
   position: relative !important;
   display: inline-block !important;
   vertical-align: middle;
-  background: #0a0f1c;
   border-radius: 6px;
   overflow: hidden;
 }
+/* Smart Filter: qora quti emas, shaffof blur qatlam. Bosilganda yo'qoladi. */
 .ai-radar-shield {
   position: absolute !important;
   inset: 0 !important;
-  background: rgba(10, 15, 28, 0.98);
-  color: #fff;
+  background: rgba(10, 15, 28, 0.15);
+  backdrop-filter: blur(22px) saturate(0.85);
+  -webkit-backdrop-filter: blur(22px) saturate(0.85);
+  color: #fca5a5;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
-  padding: 10px;
+  padding: 8px;
   z-index: 2147483647;
-  border: 2px solid #ef4444;
   border-radius: 6px;
-  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.3);
   pointer-events: auto !important;
-  cursor: not-allowed !important;
+  cursor: pointer !important;
   user-select: none;
-  overflow: hidden;
+  transition: backdrop-filter 0.25s, background 0.25s, opacity 0.25s;
 }
+.ai-radar-shield.ai-radar-revealed {
+  backdrop-filter: blur(0) !important;
+  -webkit-backdrop-filter: blur(0) !important;
+  background: transparent !important;
+  opacity: 0;
+  pointer-events: none !important;
+}
+
 .ai-radar-shield .icon { font-size: 26px; margin-bottom: 4px; }
 .ai-radar-shield .title {
   font-weight: 700;
