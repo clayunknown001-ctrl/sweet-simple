@@ -877,36 +877,36 @@
 
   function processVideo(video) {
     if (paused) return;
-    if (video.dataset.aiRadarBlocked) return;
+    if (video.dataset.aiRadarBlocked || video.dataset.aiRadarSafe) return;
     const poster = analysisUrlForVideo(video);
     const key = `${poster}|${video.currentSrc || video.src || ""}|${location.href}`;
     if (PROCESSING.get(video) === key) return;
+    if (alreadyAnalyzed(video, poster)) { video.dataset.aiRadarSafe = "1"; return; }
     const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    preShield(video);
+    rememberAnalyzed(video, poster);
     const contextText = collectContext(video, poster);
-    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
-      shieldElement(video, "Riskli YouTube video/kontekst", "local");
+    // v11: faqat StrongMediaRisk → darhol blok. Soft signal — frame-level NSFW model hal qiladi.
+    if (YOUTUBE_HOST && hasStrongMediaRisk(contextText)) {
+      shieldElement(video, "YouTube xavfli kontekst", "local");
       return;
-    }
-    if (local.suspicious || hasSoftMediaRisk(contextText)) {
-      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, true); }, 250);
     }
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
-        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, true));
+        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, local.suspicious));
         if (block) shieldElement(video, reason, "cloud");
-        else scheduleVideoBurst(video);
+        else if (local.suspicious) scheduleVideoBurst(video);
+        else clearPreShield(video);
       });
-    } else {
-      enqueue(() => captureFrame(video, true));
+    } else if (local.suspicious) {
+      enqueue(() => captureFrame(video, false));
     }
-    scheduleVideoBurst(video);
-    video.addEventListener("playing", () => scheduleVideoBurst(video));
+    // "playing" listener olib tashlandi — bir martalik tahlil.
   }
+
 
   function scheduleVideoBurst(video) {
     if (video.dataset.aiRadarBursting) return;
