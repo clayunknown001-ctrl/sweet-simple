@@ -125,27 +125,19 @@
   }
   installVisualRiskPrehide();
 
-  // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
-  function decideFromNsfw(preds, strict = false) {
+  // Smart Filter: faqat yuqori ishonchli (>0.85) Porn/Hentai bloklanadi.
+  // Past yoki shubhali qiymatlar — hech narsa qilinmaydi (false-positive'larni keskin kamaytirish).
+  function decideFromNsfw(preds, _strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
     const hentai = preds.Hentai || 0;
-    const sexy = preds.Sexy || 0;
-    const neutral = preds.Neutral || 0;
-    const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.16 : 0.34;
-    const hentaiT = strict ? 0.24 : 0.40;
-    if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
-    if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > (strict ? 0.34 : 0.46)) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.26 && neutral < 0.86) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (!strict && sexy > 0.48 && neutral < 0.68) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (strict && sexy > 0.18) return { block: false, confident: false, suspicious: true };
-    if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
-    if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
-    if (porn + hentai > 0.11 || sexy > 0.32) return { block: false, confident: false, suspicious: true };
-    return { block: false, confident: true };
+    const score = Math.max(porn, hentai);
+    if (score > 0.85) {
+      return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score };
+    }
+    return { block: false, confident: true, score };
   }
+
 
   // ========== CACHE (localStorage, 7 kun) ==========
   let CACHE = {};
