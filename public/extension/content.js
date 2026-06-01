@@ -1051,15 +1051,34 @@
     }
   });
 
+  // v11: EVENT-DRIVEN rescan. setInterval loop o'rniga — debounced rescan
+  // faqat DOM mutatsiyasi, scroll yoki visibilitychange bo'lganda.
+  let rescanTimer = 0;
+  function scheduleRescan(delay = 600) {
+    if (rescanTimer) return;
+    rescanTimer = setTimeout(() => {
+      rescanTimer = 0;
+      if (paused || document.hidden) return;
+      document.querySelectorAll("img, video").forEach(observe);
+    }, delay);
+  }
+
   function start() {
     mo.observe(document.documentElement, {
       childList: true, subtree: true,
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 900);
-    console.log(`%c[AI Radar v6] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    // Foydalanuvchi harakatlariga reaktiv (loop emas)
+    let scrollT = 0;
+    window.addEventListener("scroll", () => {
+      if (scrollT) return;
+      scrollT = setTimeout(() => { scrollT = 0; scheduleRescan(300); }, 250);
+    }, { passive: true });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleRescan(200); });
+    console.log(`%c[AI Radar v11] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "smart monitoring"}`, "color:#10b981;font-weight:bold");
   }
+
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start, { once: true });
