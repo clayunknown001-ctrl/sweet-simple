@@ -455,8 +455,21 @@
     const id = extractYouTubeId(a.href);
     return !!id && BLOCKED_YOUTUBE_IDS.has(id);
   }
+  // Smart Filter: shield ustiga bosilsa — blur'ni ochib/yopib qo'yamiz (foydalanuvchi xohlasa ko'rsin).
+  const shieldToggle = (e) => {
+    const sh = e.target?.closest?.(".ai-radar-shield");
+    if (!sh) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    sh.classList.toggle("ai-radar-revealed");
+    return false;
+  };
+  document.addEventListener("click", shieldToggle, { capture: true, passive: false });
+
   const hardStop = (e) => {
-    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
+    if (e.target?.closest?.(".ai-radar-shield")) return; // shield bosilishi shieldToggle'da
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
     if (!blocked && !isBlockedYoutubeNavigation(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -464,6 +477,7 @@
     return false;
   };
   STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
+
 
   function neutralizeContainer(el) {
     rememberBlockedYoutube(el);
