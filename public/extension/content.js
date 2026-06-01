@@ -115,15 +115,12 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    if (!VISUAL_RISK_HOST) return;
-    try {
-      document.documentElement.classList.add("ai-radar-visual-risk");
-      const st = document.createElement("style");
-      st.textContent = `html.ai-radar-visual-risk ytd-thumbnail img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-rich-grid-media img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-video-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-reel-item-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk article img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk main img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [data-test-id='pin'] img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [role='main'] video:not([data-ai-radar-safe]):not([data-ai-radar-blocked]){filter:blur(10px) saturate(.45)!important;opacity:.48!important;pointer-events:none!important}`;
-      (document.head || document.documentElement).appendChild(st);
-    } catch {}
+    // Smart Filter v11: ommaviy blur'ni o'chirib qo'yamiz — bu feedni "yo'qotardi".
+    // Faqat aniq bloklangan elementlar shieldlanadi; qolgani normal ko'rinadi.
+    return;
   }
   installVisualRiskPrehide();
+
 
   // Smart Filter: faqat yuqori ishonchli (>0.85) Porn/Hentai bloklanadi.
   // Past yoki shubhali qiymatlar — hech narsa qilinmaydi (false-positive'larni keskin kamaytirish).
