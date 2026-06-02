@@ -16,13 +16,13 @@
     const css = document.createElement("style");
     css.id = "ai-radar-core-style";
     css.textContent = `
-.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-youtube-hidden-card{display:none!important;visibility:hidden!important;pointer-events:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:80px;background:rgba(10,15,28,.96)!important;color:#67e8f9!important;border:1px dashed rgba(103,232,249,.55)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:12px!important;text-align:center!important;pointer-events:auto!important;cursor:wait!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:48px!important;border-radius:6px!important;background:rgba(10,15,28,.72)!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-youtube-hidden-card{display:none!important;visibility:hidden!important;pointer-events:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
     (document.head || document.documentElement).appendChild(css);
   }
   injectCoreStyles();
 
-  const API_BASE = "https://iwyntbeqdvsbzvmskpaw.supabase.co/functions/v1";
-  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
+  const API_BASE = "https://czxxfudupcikdomidbjl.supabase.co/functions/v1";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eHhmdWR1cGNpa2RvbWlkYmpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzY2MDMsImV4cCI6MjA5NTY1MjYwM30.gWbO-U6srz-WC1DLUGkGGOpe2iB8kSCgpPgXJ3lrveo";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 8;
@@ -130,10 +130,10 @@
     const host = location.hostname.toLowerCase().replace(/^www\./, "");
     return domains.some((d) => host === d || host.endsWith("." + d));
   }
-  // YouTube olib tashlandi — pre-shield (qora quti) feedni butunlay yopib qo'yardi.
-  // YouTube'da tahlil baribir ishlaydi (YOUTUBE_HOST orqali), lekin agressiv pre-hide yo'q.
+  // VISUAL_RISK_DOMAINS — preShield endi click-through (pointer-events:none) va shaffof bo'lgani uchun
+  // YouTube ham xavfsiz tarzda qo'shilgan. Faqat haqiqiy block bo'lganda ai-radar-shield faollashadi.
   const VISUAL_RISK_DOMAINS = [
-    "instagram.com", "pinterest.com", "tiktok.com",
+    "instagram.com", "pinterest.com", "tiktok.com", "youtube.com", "youtu.be",
     "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
