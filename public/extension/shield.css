@@ -80,21 +80,30 @@
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  min-height: 80px;
-  background: rgba(10, 15, 28, 0.96) !important;
-  color: #67e8f9 !important;
-  border: 1px dashed rgba(103, 232, 249, 0.55) !important;
+  min-height: 40px;
+  background: transparent !important;
+  color: rgba(103, 232, 249, 0.55) !important;
+  border: 1px dashed rgba(103, 232, 249, 0.25) !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  font-size: 12px !important;
+  font-size: 10px !important;
   text-align: center !important;
-  pointer-events: auto !important;
-  cursor: wait !important;
+  pointer-events: none !important;
+  cursor: default !important;
+  opacity: 0.5;
 }
 .ai-radar-pre-shield--compact {
   inset: 8px !important;
-  min-height: 48px !important;
+  min-height: 32px !important;
   border-radius: 6px !important;
-  background: rgba(10, 15, 28, 0.72) !important;
+  background: transparent !important;
+}
+.ai-radar-pre-shield--active {
+  background: rgba(10, 15, 28, 0.96) !important;
+  color: #fca5a5 !important;
+  border: 2px solid #ef4444 !important;
+  pointer-events: auto !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
 }
 .ai-radar-scanning {
   outline: 2px dashed rgba(34, 211, 238, 0.6) !important;
