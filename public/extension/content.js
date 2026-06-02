@@ -520,6 +520,20 @@
     return true;
   }
 
+  // Sherik AI: yumshoq blur — elementni buzmasdan, faqat blur qo'yadi.
+  // Foydalanuvchi bossa — blur ochiladi (manual override).
+  function softBlur(el, reason) {
+    if (!el || el.dataset.aiRadarBlocked || el.classList.contains("safe-blur")) return;
+    el.classList.add("safe-blur");
+    el.dataset.aiRadarSoftBlur = reason || "Sherik AI: shubhali";
+    clearPreShield(el);
+    blockedCount++;
+    stats.totalBlocked = blockedCount;
+    stats.localBlocked++;
+    persistStats({ lastBlock: { reason: reason || "soft-blur", host: location.hostname, ts: Date.now() } });
+    try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
+  }
+
   function shieldElement(el, reason, source = "local") {
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
