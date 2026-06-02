@@ -3,6 +3,15 @@
   pointer-events: none !important;
   user-select: none !important;
 }
+/* Sherik AI (Partner Mode): yumshoq blur. Bosilsa — manual override. */
+.safe-blur {
+  filter: blur(20px) !important;
+  transition: filter 0.3s ease-in-out !important;
+  cursor: pointer !important;
+}
+.safe-blur.safe-blur-revealed {
+  filter: none !important;
+}
 .ai-radar-wrapper {
   position: relative !important;
   display: inline-block !important;

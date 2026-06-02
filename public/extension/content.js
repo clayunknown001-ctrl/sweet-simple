@@ -464,6 +464,17 @@
   };
   document.addEventListener("click", shieldToggle, { capture: true, passive: false });
 
+  // Sherik AI: .safe-blur ustiga bosilsa — manual override (blur'ni ochish/yopish)
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!t || !t.classList) return;
+    if (t.classList.contains("safe-blur")) {
+      e.preventDefault();
+      e.stopPropagation();
+      t.classList.toggle("safe-blur-revealed");
+    }
+  }, { capture: true, passive: false });
+
   const hardStop = (e) => {
     if (e.target?.closest?.(".ai-radar-shield")) return; // shield bosilishi shieldToggle'da
     const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
@@ -507,6 +518,20 @@
     card.classList.add("ai-radar-youtube-hidden-card");
     card.dataset.aiRadarBlockedContainer = "1";
     return true;
+  }
+
+  // Sherik AI: yumshoq blur — elementni buzmasdan, faqat blur qo'yadi.
+  // Foydalanuvchi bossa — blur ochiladi (manual override).
+  function softBlur(el, reason) {
+    if (!el || el.dataset.aiRadarBlocked || el.classList.contains("safe-blur")) return;
+    el.classList.add("safe-blur");
+    el.dataset.aiRadarSoftBlur = reason || "Sherik AI: shubhali";
+    clearPreShield(el);
+    blockedCount++;
+    stats.totalBlocked = blockedCount;
+    stats.localBlocked++;
+    persistStats({ lastBlock: { reason: reason || "soft-blur", host: location.hostname, ts: Date.now() } });
+    try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
   }
 
   function shieldElement(el, reason, source = "local") {
@@ -904,8 +929,47 @@
     } else if (local.suspicious) {
       enqueue(() => captureFrame(video, false));
     }
-    // "playing" listener olib tashlandi — bir martalik tahlil.
+
+    // Sherik AI — STAGE 2 (Active Watch):
+    // Foydalanuvchi 'play' bossagina chuqur tahlil. Videoni to'xtatmaymiz —
+    // har 2.5s da fon (background) frame analyz, faqat haqiqatan xavfli bo'lsa softBlur.
+    if (!video.dataset.aiRadarPartnerBound) {
+      video.dataset.aiRadarPartnerBound = "1";
+      const startWatch = () => {
+        if (video.dataset.aiRadarWatching || video.dataset.aiRadarBlocked || paused) return;
+        video.dataset.aiRadarWatching = "1";
+        const tick = async () => {
+          if (video.paused || !document.contains(video) || video.dataset.aiRadarBlocked) {
+            delete video.dataset.aiRadarWatching;
+            return;
+          }
+          try {
+            if (video.readyState >= 2 && nsfwReady) {
+              const W = Math.min(video.videoWidth || 256, 320);
+              const H = Math.min(video.videoHeight || 256, 320);
+              if (W > 0 && H > 0) {
+                const dataUrl = captureFrameDataUrl(video, W, H);
+                const r = await classifyLocal(dataUrl, 3500);
+                if (r && r.preds) {
+                  const dec = decideFromNsfw(r.preds, true);
+                  if (dec?.block) {
+                    softBlur(video, dec.reason); // video to'xtamasdan blur
+                    delete video.dataset.aiRadarWatching;
+                    return;
+                  }
+                }
+              }
+            }
+          } catch {}
+          setTimeout(tick, 2500);
+        };
+        tick();
+      };
+      video.addEventListener("play", startWatch);
+      video.addEventListener("pause", () => { delete video.dataset.aiRadarWatching; });
+    }
   }
+
 
 
   function scheduleVideoBurst(video) {
