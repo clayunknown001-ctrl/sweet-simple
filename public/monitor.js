@@ -21,8 +21,8 @@
   }
   injectCoreStyles();
 
-  const API_BASE = "https://iwyntbeqdvsbzvmskpaw.supabase.co/functions/v1";
-  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
+  const API_BASE = "https://czxxfudupcikdomidbjl.supabase.co/functions/v1";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eHhmdWR1cGNpa2RvbWlkYmpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzY2MDMsImV4cCI6MjA5NTY1MjYwM30.gWbO-U6srz-WC1DLUGkGGOpe2iB8kSCgpPgXJ3lrveo";
 
   const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 8;
@@ -130,10 +130,10 @@
     const host = location.hostname.toLowerCase().replace(/^www\./, "");
     return domains.some((d) => host === d || host.endsWith("." + d));
   }
-  // YouTube olib tashlandi — pre-shield (qora quti) feedni butunlay yopib qo'yardi.
-  // YouTube'da tahlil baribir ishlaydi (YOUTUBE_HOST orqali), lekin agressiv pre-hide yo'q.
+  // VISUAL_RISK_DOMAINS — preShield endi click-through (pointer-events:none) va shaffof bo'lgani uchun
+  // YouTube ham xavfsiz tarzda qo'shilgan. Faqat haqiqiy block bo'lganda ai-radar-shield faollashadi.
   const VISUAL_RISK_DOMAINS = [
-    "instagram.com", "pinterest.com", "tiktok.com",
+    "instagram.com", "pinterest.com", "tiktok.com", "youtube.com", "youtu.be",
     "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
