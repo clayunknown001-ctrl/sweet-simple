@@ -464,6 +464,17 @@
   };
   document.addEventListener("click", shieldToggle, { capture: true, passive: false });
 
+  // Sherik AI: .safe-blur ustiga bosilsa — manual override (blur'ni ochish/yopish)
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!t || !t.classList) return;
+    if (t.classList.contains("safe-blur")) {
+      e.preventDefault();
+      e.stopPropagation();
+      t.classList.toggle("safe-blur-revealed");
+    }
+  }, { capture: true, passive: false });
+
   const hardStop = (e) => {
     if (e.target?.closest?.(".ai-radar-shield")) return; // shield bosilishi shieldToggle'da
     const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
