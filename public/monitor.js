@@ -130,8 +130,10 @@
     const host = location.hostname.toLowerCase().replace(/^www\./, "");
     return domains.some((d) => host === d || host.endsWith("." + d));
   }
+  // YouTube olib tashlandi — pre-shield (qora quti) feedni butunlay yopib qo'yardi.
+  // YouTube'da tahlil baribir ishlaydi (YOUTUBE_HOST orqali), lekin agressiv pre-hide yo'q.
   const VISUAL_RISK_DOMAINS = [
-    "instagram.com", "youtube.com", "youtu.be", "pinterest.com", "tiktok.com",
+    "instagram.com", "pinterest.com", "tiktok.com",
     "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);

@@ -105,8 +105,9 @@
     const host = location.hostname.toLowerCase().replace(/^www\./, "");
     return domains.some((d) => host === d || host.endsWith("." + d));
   }
+  // YouTube olib tashlandi — pre-shield feedni butunlay yopib qo'yardi.
   const VISUAL_RISK_DOMAINS = [
-    "instagram.com", "youtube.com", "youtu.be", "pinterest.com", "tiktok.com",
+    "instagram.com", "pinterest.com", "tiktok.com",
     "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
