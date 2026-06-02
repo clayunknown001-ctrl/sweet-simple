@@ -929,8 +929,47 @@
     } else if (local.suspicious) {
       enqueue(() => captureFrame(video, false));
     }
-    // "playing" listener olib tashlandi — bir martalik tahlil.
+
+    // Sherik AI — STAGE 2 (Active Watch):
+    // Foydalanuvchi 'play' bossagina chuqur tahlil. Videoni to'xtatmaymiz —
+    // har 2.5s da fon (background) frame analyz, faqat haqiqatan xavfli bo'lsa softBlur.
+    if (!video.dataset.aiRadarPartnerBound) {
+      video.dataset.aiRadarPartnerBound = "1";
+      const startWatch = () => {
+        if (video.dataset.aiRadarWatching || video.dataset.aiRadarBlocked || paused) return;
+        video.dataset.aiRadarWatching = "1";
+        const tick = async () => {
+          if (video.paused || !document.contains(video) || video.dataset.aiRadarBlocked) {
+            delete video.dataset.aiRadarWatching;
+            return;
+          }
+          try {
+            if (video.readyState >= 2 && nsfwReady) {
+              const W = Math.min(video.videoWidth || 256, 320);
+              const H = Math.min(video.videoHeight || 256, 320);
+              if (W > 0 && H > 0) {
+                const dataUrl = captureFrameDataUrl(video, W, H);
+                const r = await classifyLocal(dataUrl, 3500);
+                if (r && r.preds) {
+                  const dec = decideFromNsfw(r.preds, true);
+                  if (dec?.block) {
+                    softBlur(video, dec.reason); // video to'xtamasdan blur
+                    delete video.dataset.aiRadarWatching;
+                    return;
+                  }
+                }
+              }
+            }
+          } catch {}
+          setTimeout(tick, 2500);
+        };
+        tick();
+      };
+      video.addEventListener("play", startWatch);
+      video.addEventListener("pause", () => { delete video.dataset.aiRadarWatching; });
+    }
   }
+
 
 
   function scheduleVideoBurst(video) {
