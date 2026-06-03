@@ -424,7 +424,7 @@
     return el.parentElement || el;
   }
   function preShield(el, reason = "Tekshirilmoqda") {
-    if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    if (WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
     const r = el.getBoundingClientRect();
     const min = minSizeFor(el);
     if ((r.width || el.offsetWidth || 0) < min || (r.height || el.offsetHeight || 0) < min) return;
