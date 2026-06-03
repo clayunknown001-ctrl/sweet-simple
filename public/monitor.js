@@ -886,7 +886,8 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = local.suspicious || highSkin || visualSuspicious;
+    // Aggressive mode: always send to Cloud AI unless local confidently approved
+    const shouldUseCloud = true;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
