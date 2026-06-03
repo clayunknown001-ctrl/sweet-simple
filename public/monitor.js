@@ -745,9 +745,11 @@
     return MIN_SIZE;
   }
 
-  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
-    // Partner Mode: network/model errors must never hide safe content.
-    // Block only from explicit local/AI risky verdicts.
+  function shouldFailClosed(el, local = {}, visualSignal = false) {
+    // Aggressive mode: if there's ANY suspicion signal, block on network/model failure.
+    if (visualSignal) return true;
+    if (local && (local.block || local.suspicious)) return true;
+    if (VISUAL_RISK_HOST) return true;
     return false;
   }
 
