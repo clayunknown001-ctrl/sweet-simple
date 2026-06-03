@@ -914,7 +914,7 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    // no pre-shield: video stays visible while AI checks in background
+    preShield(video, "Video tekshirilmoqda...");
     const contextText = collectContext(video, poster);
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
       scheduleVideoBurst(video);
