@@ -836,7 +836,7 @@
     if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
-    // no pre-shield: thumbnails stay visible while AI checks in background
+    preShield(img, "Analiz qilinmoqda...");
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
