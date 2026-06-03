@@ -144,10 +144,23 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Partner Mode: never blur/hide the whole feed before analysis.
-    return;
+    // Aggressive mode: show "Analiz qilinmoqda..." indicator on all media containers immediately.
+    try {
+      const apply = () => {
+        document.querySelectorAll("img, video").forEach((el) => {
+          if (!el.dataset.aiRadarBlocked && !el.dataset.aiRadarSafe) {
+            try { preShield(el, "Analiz qilinmoqda..."); } catch {}
+          }
+        });
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", apply, { once: true });
+      } else {
+        apply();
+      }
+    } catch {}
   }
-  installVisualRiskPrehide();
+  setTimeout(installVisualRiskPrehide, 0);
 
   // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
   function decideFromNsfw(preds, _strict = false) {
@@ -411,7 +424,7 @@
     return el.parentElement || el;
   }
   function preShield(el, reason = "Tekshirilmoqda") {
-    if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    if (WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
     const r = el.getBoundingClientRect();
     const min = minSizeFor(el);
     if ((r.width || el.offsetWidth || 0) < min || (r.height || el.offsetHeight || 0) < min) return;
@@ -732,9 +745,11 @@
     return MIN_SIZE;
   }
 
-  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
-    // Partner Mode: network/model errors must never hide safe content.
-    // Block only from explicit local/AI risky verdicts.
+  function shouldFailClosed(el, local = {}, visualSignal = false) {
+    // Aggressive mode: if there's ANY suspicion signal, block on network/model failure.
+    if (visualSignal) return true;
+    if (local && (local.block || local.suspicious)) return true;
+    if (VISUAL_RISK_HOST) return true;
     return false;
   }
 
@@ -821,7 +836,7 @@
     if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
-    // no pre-shield: thumbnails stay visible while AI checks in background
+    preShield(img, "Analiz qilinmoqda...");
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -871,7 +886,8 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = local.suspicious || highSkin || visualSuspicious;
+    // Aggressive mode: always send to Cloud AI unless local confidently approved
+    const shouldUseCloud = true;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -898,7 +914,7 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    // no pre-shield: video stays visible while AI checks in background
+    preShield(video, "Video tekshirilmoqda...");
     const contextText = collectContext(video, poster);
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
       scheduleVideoBurst(video);
