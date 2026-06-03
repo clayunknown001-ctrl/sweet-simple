@@ -387,7 +387,7 @@
     const box = nearestMediaContainer(el);
     if (!box || box.dataset.aiRadarPreShieldBox) return;
     box.dataset.aiRadarPreShieldBox = "1";
-    box.classList.add("ai-radar-preblocked-container");
+    // pending shield must never disable the original site card
     const visualBox = YOUTUBE_HOST ? youtubeVisualBox(el) : box;
     if (getComputedStyle(visualBox).position === "static") visualBox.style.position = "relative";
     const shield = document.createElement("div");
@@ -478,7 +478,7 @@
 
   const hardStop = (e) => {
     if (e.target?.closest?.(".ai-radar-shield")) return; // shield bosilishi shieldToggle'da
-    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],[data-ai-radar-pre-shield-box='1'],.ai-radar-wrapper,.ai-radar-pre-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
+    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
     if (!blocked && !isBlockedYoutubeNavigation(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -511,14 +511,9 @@
       STOP_EVENTS.forEach((evt) => t.addEventListener(evt, hardStop, { capture: true, passive: false }));
     });
   }
-  function collapseYoutubeCard(el) {
-    if (!YOUTUBE_HOST) return false;
-    const card = youtubeCard(el);
-    if (!card) return false;
-    if (card.matches?.("ytd-reel-video-renderer")) return false;
-    card.classList.add("ai-radar-youtube-hidden-card");
-    card.dataset.aiRadarBlockedContainer = "1";
-    return true;
+  function collapseYoutubeCard(_el) {
+    // Never remove YouTube cards; harmful media is blurred/shielded in place.
+    return false;
   }
 
   // Sherik AI: yumshoq blur — elementni buzmasdan, faqat blur qo'yadi.
@@ -536,6 +531,10 @@
   }
 
   function shieldElement(el, reason, source = "local") {
+    if (VISUAL_RISK_HOST && (el.tagName === "IMG" || el.tagName === "VIDEO")) {
+      softBlur(el, reason);
+      return;
+    }
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
     clearPreShield(el);
@@ -834,7 +833,7 @@
     PROCESSING.set(img, url);
     rememberAnalyzed(img, url);
 
-    preShield(img);
+    // no pre-shield: thumbnails stay visible while AI checks in background
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -874,8 +873,7 @@
 
     const highSkin = !error && skinPct > (VISUAL_RISK_HOST ? 0.26 : 0.48) && img.naturalWidth >= 220;
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !error && skinPct > 0.18) {
-      shieldElement(img, "Riskli YouTube vizual/kontekst", "local");
-      return;
+      visualSuspicious = true;
     }
 
     const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
@@ -885,7 +883,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
+    const shouldUseCloud = local.suspicious || highSkin || visualSuspicious;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -1004,7 +1002,7 @@
 
     // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
     if (VISUAL_RISK_HOST) {
-      await sampleCurrentVideoFrame(video, W, H, true);
+      await sampleCurrentVideoFrame(video, W, H, failClosed);
       return;
     }
 
@@ -1080,7 +1078,7 @@
 
   function observe(el) {
     if (el.tagName !== "IMG" && el.tagName !== "VIDEO") return;
-    if (VISUAL_RISK_HOST && !WHITELISTED) preShield(el, "AI tekshirmoqda");
+    // Partner Mode: no pre-blocking; analyze only visible/new media in background
     io.observe(el);
     const { w, h } = mediaVisibleSize(el);
     if (w >= MIN_SIZE && h >= MIN_SIZE) {

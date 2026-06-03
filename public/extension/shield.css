@@ -65,13 +65,13 @@
   line-height: 1.3;
 }
 .ai-radar-preblocked-container {
-  pointer-events: none !important;
-  user-select: none !important;
+  pointer-events: auto !important;
+  user-select: auto !important;
 }
 .ai-radar-youtube-hidden-card {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
+  display: revert !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 .ai-radar-pre-shield {
   position: absolute !important;

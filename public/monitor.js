@@ -16,7 +16,7 @@
     const css = document.createElement("style");
     css.id = "ai-radar-core-style";
     css.textContent = `
-.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-youtube-hidden-card{display:none!important;visibility:hidden!important;pointer-events:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.safe-blur{filter:blur(20px)!important;transition:filter .3s ease-in-out!important;cursor:pointer!important}.safe-blur.safe-blur-revealed{filter:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:none!important;user-select:none!important}.ai-radar-youtube-hidden-card{display:none!important;visibility:hidden!important;pointer-events:none!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
     (document.head || document.documentElement).appendChild(css);
   }
   injectCoreStyles();
@@ -138,42 +138,27 @@
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
   const YOUTUBE_HOST = hostMatches(["youtube.com", "youtu.be"]);
-  const YOUTUBE_AGGRESSIVE_MODE = YOUTUBE_HOST;
+  const YOUTUBE_AGGRESSIVE_MODE = false;
   const VIDEO_SCAN_TIMERS = new WeakMap();
   const BLOCKED_YOUTUBE_IDS = new Set();
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    if (!VISUAL_RISK_HOST) return;
-    try {
-      document.documentElement.classList.add("ai-radar-visual-risk");
-      const st = document.createElement("style");
-      st.textContent = `html.ai-radar-visual-risk ytd-thumbnail img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-rich-grid-media img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-video-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk ytd-reel-item-renderer img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk article img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk main img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [data-test-id='pin'] img:not([data-ai-radar-safe]):not([data-ai-radar-blocked]),html.ai-radar-visual-risk [role='main'] video:not([data-ai-radar-safe]):not([data-ai-radar-blocked]){filter:blur(10px) saturate(.45)!important;opacity:.48!important;pointer-events:none!important}`;
-      (document.head || document.documentElement).appendChild(st);
-    } catch {}
+    // Partner Mode: never blur/hide the whole feed before analysis.
+    return;
   }
   installVisualRiskPrehide();
 
   // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
-  function decideFromNsfw(preds, strict = false) {
+  function decideFromNsfw(preds, _strict = false) {
     if (!preds) return null;
     const porn = preds.Porn || 0;
     const hentai = preds.Hentai || 0;
-    const sexy = preds.Sexy || 0;
-    const neutral = preds.Neutral || 0;
-    const drawing = preds.Drawing || 0;
-    const pornT = strict ? 0.16 : 0.34;
-    const hentaiT = strict ? 0.24 : 0.40;
-    if (porn > pornT) return { block: true, reason: "Behayo kontent", confident: true };
-    if (hentai > hentaiT) return { block: true, reason: "Hentai", confident: true };
-    if (porn + hentai > (strict ? 0.34 : 0.46)) return { block: true, reason: "Behayo kontent", confident: true };
-    if (strict && sexy > 0.26 && neutral < 0.86) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (!strict && sexy > 0.48 && neutral < 0.68) return { block: true, reason: "Erotik/ochiq kontent", confident: true };
-    if (strict && sexy > 0.18) return { block: false, confident: false, suspicious: true };
-    if (neutral > 0.82 && porn + hentai < 0.08 && sexy < 0.35) return { block: false, confident: true };
-    if (drawing > 0.7 && porn + hentai < 0.15) return { block: false, confident: true };
-    if (porn + hentai > 0.11 || sexy > 0.32) return { block: false, confident: false, suspicious: true };
-    return { block: false, confident: true };
+    const score = Math.max(porn, hentai);
+    if (score > 0.85) {
+      return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score };
+    }
+    return { block: false, confident: true, score };
   }
 
   // ========== CACHE (localStorage, 7 kun) ==========
@@ -434,7 +419,7 @@
     const box = nearestMediaContainer(el);
     if (!box || box.dataset.aiRadarPreShieldBox) return;
     box.dataset.aiRadarPreShieldBox = "1";
-    box.classList.add("ai-radar-preblocked-container");
+    // pending shield must never disable the original site card
     const visualBox = YOUTUBE_HOST ? youtubeVisualBox(el) : box;
     if (getComputedStyle(visualBox).position === "static") visualBox.style.position = "relative";
     const shield = document.createElement("div");
@@ -453,18 +438,14 @@
     } catch {}
   }
   function localBlockDecision(el, url) {
+    // Partner Mode: meta/page context never blocks by itself; it only decides whether AI should inspect.
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
-    const isTinyProfile = el.tagName === "IMG" && Math.max(el.naturalWidth || 0, el.naturalHeight || 0) < 220;
-    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText) || (!isTinyProfile && hasMetaBlockRisk(pageContext))) {
-      return { block: true, reason: "Xavfli matn/media belgisi" };
+    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) {
+      return { block: true, reason: "Xavfli media URL/matn" };
     }
-    const ytShortsContext = YOUTUBE_HOST && (/shorts|#shorts|tiktok|reels|cosplay|outfit|lookswap|dressootd|challenge|brooke monk|big bank|boat trend|bodycon|leggings|dance|raqs/i.test(pageContext));
-    if (ytShortsContext && (hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext))) {
-      return { block: true, reason: "YouTube Shorts riskli kontekst" };
-    }
-    if (hasSoftMediaRisk(mediaText) || hasStrongMediaRisk(pageContext) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
-      return { block: false, suspicious: true, reason: "Riskli matn/kontekst" };
+    if (hasStrongMediaRisk(pageContext) || hasMetaBlockRisk(pageContext) || hasSoftMediaRisk(mediaText) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
+      return { block: false, suspicious: true, reason: "Riskli kontekst" };
     }
     return { block: false };
   }
@@ -533,17 +514,36 @@
       STOP_EVENTS.forEach((evt) => t.addEventListener(evt, hardStop, { capture: true, passive: false }));
     });
   }
-  function collapseYoutubeCard(el) {
-    if (!YOUTUBE_HOST) return false;
-    const card = youtubeCard(el);
-    if (!card) return false;
-    if (card.matches?.("ytd-reel-video-renderer")) return false;
-    card.classList.add("ai-radar-youtube-hidden-card");
-    card.dataset.aiRadarBlockedContainer = "1";
-    return true;
+  function collapseYoutubeCard(_el) {
+    // Never remove YouTube cards; harmful media is blurred/shielded in place.
+    return false;
   }
 
+  function softBlur(el, reason) {
+    if (!el || el.dataset.aiRadarBlocked || el.classList.contains("safe-blur")) return;
+    el.classList.add("safe-blur");
+    el.dataset.aiRadarSoftBlur = reason || "Sherik AI: shubhali";
+    clearPreShield(el);
+    blockedCount++;
+    stats.totalBlocked = blockedCount;
+    stats.localBlocked++;
+    persistStats({ lastBlock: { reason: reason || "soft-blur", host: location.hostname, ts: Date.now() } });
+    try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!t || !t.classList?.contains("safe-blur")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    t.classList.toggle("safe-blur-revealed");
+  }, { capture: true, passive: false });
+
   function shieldElement(el, reason, source = "local") {
+    if (VISUAL_RISK_HOST && (el.tagName === "IMG" || el.tagName === "VIDEO")) {
+      softBlur(el, reason);
+      return;
+    }
     if (el.dataset.aiRadarBlocked) return;
     el.dataset.aiRadarBlocked = "1";
     clearPreShield(el);
@@ -732,11 +732,10 @@
     return MIN_SIZE;
   }
 
-  function shouldFailClosed(el, local = {}, visualSignal = false) {
-    if (WHITELISTED) return false;
-    if (local.block || local.suspicious) return true;
-    if (VISUAL_RISK_HOST) return true;
-    return !!visualSignal;
+  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
+    // Partner Mode: network/model errors must never hide safe content.
+    // Block only from explicit local/AI risky verdicts.
+    return false;
   }
 
   async function firstBlockingAnalysis(urls, failClosed = false, fast = true) {
@@ -822,7 +821,7 @@
     if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
-    preShield(img);
+    // no pre-shield: thumbnails stay visible while AI checks in background
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -862,8 +861,7 @@
 
     const highSkin = !error && skinPct > (VISUAL_RISK_HOST ? 0.26 : 0.48) && img.naturalWidth >= 220;
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !error && skinPct > 0.18) {
-      shieldElement(img, "Riskli YouTube vizual/kontekst", "local");
-      return;
+      visualSuspicious = true;
     }
 
     const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
@@ -873,7 +871,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = local.suspicious || highSkin || VISUAL_RISK_HOST;
+    const shouldUseCloud = local.suspicious || highSkin || visualSuspicious;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -900,11 +898,10 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    preShield(video);
+    // no pre-shield: video stays visible while AI checks in background
     const contextText = collectContext(video, poster);
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
-      shieldElement(video, "Riskli YouTube video/kontekst", "local");
-      return;
+      scheduleVideoBurst(video);
     }
     if (local.suspicious || hasSoftMediaRisk(contextText)) {
       setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, true); }, 250);
@@ -922,10 +919,10 @@
     } else {
       enqueue(() => captureFrame(video, true));
     }
-    if (YOUTUBE_AGGRESSIVE_MODE) startContinuousVideoScan(video);
+    // continuous scan disabled; only visible/new videos are sampled once/burst
     scheduleVideoBurst(video);
     video.addEventListener("playing", () => scheduleVideoBurst(video));
-    video.addEventListener("playing", () => { if (YOUTUBE_AGGRESSIVE_MODE) startContinuousVideoScan(video); });
+    video.addEventListener("playing", () => { // continuous scan disabled; only visible/new videos are sampled once/burst });
     video.addEventListener("pause", () => stopContinuousVideoScan(video));
     video.addEventListener("ended", () => stopContinuousVideoScan(video));
   }
@@ -977,7 +974,7 @@
 
     // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
     if (VISUAL_RISK_HOST) {
-      await sampleCurrentVideoFrame(video, W, H, true);
+      await sampleCurrentVideoFrame(video, W, H, failClosed);
       return;
     }
 
@@ -1053,7 +1050,7 @@
 
   function observe(el) {
     if (el.tagName !== "IMG" && el.tagName !== "VIDEO") return;
-    if (VISUAL_RISK_HOST && !WHITELISTED) preShield(el, "AI tekshirmoqda");
+    // Partner Mode: no pre-blocking; analyze only visible/new media in background
     io.observe(el);
     const { w, h } = mediaVisibleSize(el);
     const min = minSizeFor(el);
@@ -1096,7 +1093,7 @@
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    setInterval(() => document.querySelectorAll("img, video").forEach(observe), 900);
+    // interval rescan disabled; MutationObserver + scroll rescan handles new media
     console.log(`%c[AI Radar v6] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
 
