@@ -719,12 +719,10 @@
     return { w, h };
   }
 
-  function shouldFailClosed(el, local = {}, visualSignal = false) {
-    // v11: VISUAL_RISK_HOST yolg'iz holda fail-closed bermaydi.
-    // Faqat lokal/visual signal mavjud bo'lsa AI tekshirilmaganda bloklaymiz.
-    if (WHITELISTED) return false;
-    if (local.block) return true;
-    return !!visualSignal && !!local.suspicious;
+  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
+    // Partner Mode: network/model errors must never hide safe content.
+    // Block only from explicit local/AI risky verdicts.
+    return false;
   }
 
   async function firstBlockingAnalysis(urls, failClosed = false) {
