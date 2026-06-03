@@ -904,7 +904,7 @@
       scheduleVideoBurst(video);
     }
     if (local.suspicious || hasSoftMediaRisk(contextText)) {
-      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, true); }, 250);
+      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, false); }, 250);
     }
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
@@ -917,12 +917,12 @@
         else scheduleVideoBurst(video);
       });
     } else {
-      enqueue(() => captureFrame(video, true));
+      enqueue(() => captureFrame(video, false));
     }
     // continuous scan disabled; only visible/new videos are sampled once/burst
     scheduleVideoBurst(video);
     video.addEventListener("playing", () => scheduleVideoBurst(video));
-    video.addEventListener("playing", () => { // continuous scan disabled; only visible/new videos are sampled once/burst });
+    // continuous scan listener disabled
     video.addEventListener("pause", () => stopContinuousVideoScan(video));
     video.addEventListener("ended", () => stopContinuousVideoScan(video));
   }
