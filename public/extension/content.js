@@ -828,7 +828,7 @@
     PROCESSING.set(img, url);
     rememberAnalyzed(img, url);
 
-    preShield(img, "Analiz qilinmoqda...");
+    // Check-then-Block: no pre-shield; image stays visible during analysis.
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
