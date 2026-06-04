@@ -927,6 +927,7 @@
 
     PROCESSING.set(video, key);
     rememberAnalyzed(video, poster);
+    preShield(video, "Video tekshirilmoqda...");
     const contextText = collectContext(video, poster);
     // v11: faqat StrongMediaRisk → darhol blok. Soft signal — frame-level NSFW model hal qiladi.
     if (YOUTUBE_HOST && hasStrongMediaRisk(contextText)) {
