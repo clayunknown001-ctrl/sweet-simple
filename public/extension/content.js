@@ -848,7 +848,7 @@
     PROCESSING.set(img, url);
     rememberAnalyzed(img, url);
 
-    // no pre-shield: thumbnails stay visible while AI checks in background
+    preShield(img, "Analiz qilinmoqda...");
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
