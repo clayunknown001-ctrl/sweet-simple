@@ -717,11 +717,8 @@
     return { w, h };
   }
 
-  function shouldFailClosed(_el, local = {}, visualSignal = false) {
-    // Aggressive mode: AI yoki lokal signal shubha tug'dirsa — fail-closed.
-    if (visualSignal) return true;
-    if (local && (local.block || local.suspicious)) return true;
-    if (VISUAL_RISK_HOST) return true;
+  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
+    // Check-then-Block: never block on analysis failure.
     return false;
   }
 
