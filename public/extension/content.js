@@ -116,11 +116,26 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Smart Filter v11: ommaviy blur'ni o'chirib qo'yamiz — bu feedni "yo'qotardi".
-    // Faqat aniq bloklangan elementlar shieldlanadi; qolgani normal ko'rinadi.
-    return;
+    // Aggressive mode: visible media'ga pending pre-shield qo'yamiz.
+    const apply = () => {
+      try {
+        document.querySelectorAll("img, video").forEach((el) => {
+          if (el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
+          preShield(el, "Analiz qilinmoqda...");
+        });
+      } catch {}
+    };
+    apply();
+    try {
+      const mo = new MutationObserver(() => apply());
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    } catch {}
   }
-  installVisualRiskPrehide();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installVisualRiskPrehide, { once: true });
+  } else {
+    installVisualRiskPrehide();
+  }
 
 
   // Smart Filter: faqat yuqori ishonchli (>0.85) Porn/Hentai bloklanadi.
