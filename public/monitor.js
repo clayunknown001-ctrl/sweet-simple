@@ -16,7 +16,7 @@
     const css = document.createElement("style");
     css.id = "ai-radar-core-style";
     css.textContent = `
-.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.safe-blur{filter:blur(20px)!important;transition:filter .3s ease-in-out!important;cursor:pointer!important}.safe-blur.safe-blur-revealed{filter:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:auto!important;user-select:auto!important}.ai-radar-youtube-hidden-card{display:revert!important;visibility:visible!important;pointer-events:auto!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.safe-blur{filter:blur(25px)!important;transition:filter .5s ease!important;cursor:pointer!important;pointer-events:auto!important}.safe-blur.safe-blur-revealed{filter:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:auto!important;user-select:auto!important}.ai-radar-youtube-hidden-card{display:revert!important;visibility:visible!important;pointer-events:auto!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
     (document.head || document.documentElement).appendChild(css);
   }
   injectCoreStyles();
@@ -144,23 +144,11 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Aggressive mode: show "Analiz qilinmoqda..." indicator on all media containers immediately.
-    try {
-      const apply = () => {
-        document.querySelectorAll("img, video").forEach((el) => {
-          if (!el.dataset.aiRadarBlocked && !el.dataset.aiRadarSafe) {
-            try { preShield(el, "Analiz qilinmoqda..."); } catch {}
-          }
-        });
-      };
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", apply, { once: true });
-      } else {
-        apply();
-      }
-    } catch {}
+    // Check-then-Block: do NOT pre-blur or pre-shield media. AI analyzes in background;
+    // only confirmed risky content gets blocked. Videos/images load clean by default.
+    return;
   }
-  setTimeout(installVisualRiskPrehide, 0);
+  // intentionally not invoked
 
   // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
   function decideFromNsfw(preds, _strict = false) {
@@ -745,11 +733,8 @@
     return MIN_SIZE;
   }
 
-  function shouldFailClosed(el, local = {}, visualSignal = false) {
-    // Aggressive mode: if there's ANY suspicion signal, block on network/model failure.
-    if (visualSignal) return true;
-    if (local && (local.block || local.suspicious)) return true;
-    if (VISUAL_RISK_HOST) return true;
+  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
+    // Check-then-Block: never block on analysis failure. Only confirmed AI verdicts block.
     return false;
   }
 
@@ -836,7 +821,7 @@
     if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
-    preShield(img, "Analiz qilinmoqda...");
+    // Check-then-Block: no pre-shield. Image stays visible during analysis.
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -914,7 +899,7 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    preShield(video, "Video tekshirilmoqda...");
+    // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
     const contextText = collectContext(video, poster);
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
       scheduleVideoBurst(video);

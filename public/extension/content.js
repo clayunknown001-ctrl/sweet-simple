@@ -116,25 +116,8 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Aggressive mode: visible media'ga pending pre-shield qo'yamiz.
-    const apply = () => {
-      try {
-        document.querySelectorAll("img, video").forEach((el) => {
-          if (el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
-          preShield(el, "Analiz qilinmoqda...");
-        });
-      } catch {}
-    };
-    apply();
-    try {
-      const mo = new MutationObserver(() => apply());
-      mo.observe(document.documentElement, { childList: true, subtree: true });
-    } catch {}
-  }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", installVisualRiskPrehide, { once: true });
-  } else {
-    installVisualRiskPrehide();
+    // Check-then-Block: no pre-shield. Media loads clean; only confirmed risky content is blocked.
+    return;
   }
 
 
@@ -734,11 +717,8 @@
     return { w, h };
   }
 
-  function shouldFailClosed(_el, local = {}, visualSignal = false) {
-    // Aggressive mode: AI yoki lokal signal shubha tug'dirsa — fail-closed.
-    if (visualSignal) return true;
-    if (local && (local.block || local.suspicious)) return true;
-    if (VISUAL_RISK_HOST) return true;
+  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
+    // Check-then-Block: never block on analysis failure.
     return false;
   }
 
@@ -848,7 +828,7 @@
     PROCESSING.set(img, url);
     rememberAnalyzed(img, url);
 
-    preShield(img, "Analiz qilinmoqda...");
+    // Check-then-Block: no pre-shield; image stays visible during analysis.
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -927,7 +907,7 @@
 
     PROCESSING.set(video, key);
     rememberAnalyzed(video, poster);
-    preShield(video, "Video tekshirilmoqda...");
+    // Check-then-Block: no pre-shield; video remains playable during analysis.
     const contextText = collectContext(video, poster);
     // v11: faqat StrongMediaRisk → darhol blok. Soft signal — frame-level NSFW model hal qiladi.
     if (YOUTUBE_HOST && hasStrongMediaRisk(contextText)) {
