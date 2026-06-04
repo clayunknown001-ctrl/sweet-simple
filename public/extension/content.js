@@ -116,11 +116,26 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Smart Filter v11: ommaviy blur'ni o'chirib qo'yamiz — bu feedni "yo'qotardi".
-    // Faqat aniq bloklangan elementlar shieldlanadi; qolgani normal ko'rinadi.
-    return;
+    // Aggressive mode: visible media'ga pending pre-shield qo'yamiz.
+    const apply = () => {
+      try {
+        document.querySelectorAll("img, video").forEach((el) => {
+          if (el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
+          preShield(el, "Analiz qilinmoqda...");
+        });
+      } catch {}
+    };
+    apply();
+    try {
+      const mo = new MutationObserver(() => apply());
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    } catch {}
   }
-  installVisualRiskPrehide();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installVisualRiskPrehide, { once: true });
+  } else {
+    installVisualRiskPrehide();
+  }
 
 
   // Smart Filter: faqat yuqori ishonchli (>0.85) Porn/Hentai bloklanadi.
@@ -380,7 +395,7 @@
     return el.parentElement || el;
   }
   function preShield(el, reason = "Tekshirilmoqda") {
-    if (!VISUAL_RISK_HOST || WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    if (WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
     const r = el.getBoundingClientRect();
     if ((r.width || el.offsetWidth || 0) < MIN_SIZE || (r.height || el.offsetHeight || 0) < MIN_SIZE) return;
     el.dataset.aiRadarPreShield = "1";
@@ -719,9 +734,11 @@
     return { w, h };
   }
 
-  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
-    // Partner Mode: network/model errors must never hide safe content.
-    // Block only from explicit local/AI risky verdicts.
+  function shouldFailClosed(_el, local = {}, visualSignal = false) {
+    // Aggressive mode: AI yoki lokal signal shubha tug'dirsa — fail-closed.
+    if (visualSignal) return true;
+    if (local && (local.block || local.suspicious)) return true;
+    if (VISUAL_RISK_HOST) return true;
     return false;
   }
 
@@ -831,7 +848,7 @@
     PROCESSING.set(img, url);
     rememberAnalyzed(img, url);
 
-    // no pre-shield: thumbnails stay visible while AI checks in background
+    preShield(img, "Analiz qilinmoqda...");
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -881,7 +898,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = local.suspicious || highSkin || visualSuspicious;
+    const shouldUseCloud = true;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -910,6 +927,7 @@
 
     PROCESSING.set(video, key);
     rememberAnalyzed(video, poster);
+    preShield(video, "Video tekshirilmoqda...");
     const contextText = collectContext(video, poster);
     // v11: faqat StrongMediaRisk → darhol blok. Soft signal — frame-level NSFW model hal qiladi.
     if (YOUTUBE_HOST && hasStrongMediaRisk(contextText)) {
