@@ -898,7 +898,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = local.suspicious || highSkin || visualSuspicious;
+    const shouldUseCloud = true;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
