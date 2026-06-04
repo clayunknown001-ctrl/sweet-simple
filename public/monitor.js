@@ -144,23 +144,11 @@
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Aggressive mode: show "Analiz qilinmoqda..." indicator on all media containers immediately.
-    try {
-      const apply = () => {
-        document.querySelectorAll("img, video").forEach((el) => {
-          if (!el.dataset.aiRadarBlocked && !el.dataset.aiRadarSafe) {
-            try { preShield(el, "Analiz qilinmoqda..."); } catch {}
-          }
-        });
-      };
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", apply, { once: true });
-      } else {
-        apply();
-      }
-    } catch {}
+    // Check-then-Block: do NOT pre-blur or pre-shield media. AI analyzes in background;
+    // only confirmed risky content gets blocked. Videos/images load clean by default.
+    return;
   }
-  setTimeout(installVisualRiskPrehide, 0);
+  // intentionally not invoked
 
   // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
   function decideFromNsfw(preds, _strict = false) {
