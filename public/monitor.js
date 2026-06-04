@@ -821,7 +821,7 @@
     if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
-    preShield(img, "Analiz qilinmoqda...");
+    // Check-then-Block: no pre-shield. Image stays visible during analysis.
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
