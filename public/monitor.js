@@ -733,11 +733,8 @@
     return MIN_SIZE;
   }
 
-  function shouldFailClosed(el, local = {}, visualSignal = false) {
-    // Aggressive mode: if there's ANY suspicion signal, block on network/model failure.
-    if (visualSignal) return true;
-    if (local && (local.block || local.suspicious)) return true;
-    if (VISUAL_RISK_HOST) return true;
+  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
+    // Check-then-Block: never block on analysis failure. Only confirmed AI verdicts block.
     return false;
   }
 
