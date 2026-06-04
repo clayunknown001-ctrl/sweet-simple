@@ -899,7 +899,7 @@
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    preShield(video, "Video tekshirilmoqda...");
+    // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
     const contextText = collectContext(video, poster);
     if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
       scheduleVideoBurst(video);
