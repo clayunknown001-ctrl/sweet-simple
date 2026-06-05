@@ -337,16 +337,14 @@
   }
   function collectContext(el, url) {
     const parts = [
-      url, document.title, el.alt, el.title,
+      el.alt, el.title,
       el.getAttribute && el.getAttribute("aria-label"),
-      el.closest && el.closest("a")?.href,
       el.closest && el.closest("a")?.textContent?.slice(0, 80),
-      el.closest && el.closest("article")?.textContent?.slice(0, 160),
-      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 240),
+      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 200),
       el.closest && el.closest("[role='link'],[role='button']")?.getAttribute?.("aria-label"),
-      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 160),
+      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 120),
     ];
-    return parts.filter(Boolean).join(" ").slice(0, 1000);
+    return parts.filter(Boolean).join(" ").slice(0, 600);
   }
   function hasMetaBlockRisk(text) {
     const t = normalizeText(text);
