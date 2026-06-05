@@ -888,7 +888,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = true;
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || (VISUAL_RISK_HOST && !nsfwReady);
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -928,11 +928,15 @@
       enqueue(async () => {
         const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, local.suspicious));
         if (block) shieldElement(video, reason, "cloud");
-        else if (local.suspicious) scheduleVideoBurst(video);
+        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
         else clearPreShield(video);
       });
     } else if (local.suspicious) {
       enqueue(() => captureFrame(video, false));
+    }
+
+    if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) {
+      scheduleVideoBurst(video);
     }
 
     // Sherik AI — STAGE 2 (Active Watch):
