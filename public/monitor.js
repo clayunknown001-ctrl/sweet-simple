@@ -882,8 +882,7 @@
       else clearPreShield(img);
       return;
     }
-    // Aggressive mode: always send to Cloud AI unless local confidently approved
-    const shouldUseCloud = true;
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || (VISUAL_RISK_HOST && !nsfwReady);
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -912,7 +911,7 @@
     PROCESSING.set(video, key);
     // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
     const contextText = collectContext(video, poster);
-    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
+    if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) {
       scheduleVideoBurst(video);
     }
     if (local.suspicious || hasSoftMediaRisk(contextText)) {
@@ -926,14 +925,15 @@
           !YOUTUBE_AGGRESSIVE_MODE,
         );
         if (block) shieldElement(video, reason, "cloud");
-        else scheduleVideoBurst(video);
+        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
       });
     } else {
       enqueue(() => captureFrame(video, false));
     }
-    // continuous scan disabled; only visible/new videos are sampled once/burst
-    scheduleVideoBurst(video);
-    video.addEventListener("playing", () => scheduleVideoBurst(video));
+    // continuous scan disabled; only suspicious visible/new videos are sampled once/burst
+    video.addEventListener("playing", () => {
+      if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
+    });
     // continuous scan listener disabled
     video.addEventListener("pause", () => stopContinuousVideoScan(video));
     video.addEventListener("ended", () => stopContinuousVideoScan(video));
