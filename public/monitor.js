@@ -150,16 +150,32 @@
   }
   // intentionally not invoked
 
-  // v5: zararli kontent o'tib ketmasligi uchun NSFW threshold'lar yanada qat'iy.
-  function decideFromNsfw(preds, _strict = false) {
+  // Lokal NSFW model: strict rejimda Sexy signallar ham hisobga olinadi.
+  function decideFromNsfw(preds, strict = false) {
     if (!preds) return null;
-    const porn = preds.Porn || 0;
+    const porn   = preds.Porn   || 0;
     const hentai = preds.Hentai || 0;
-    const score = Math.max(porn, hentai);
-    if (score > 0.85) {
-      return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score };
+    const sexy   = preds.Sexy   || 0;
+    if (strict) {
+      if (porn > 0.65 || hentai > 0.65) {
+        return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score: Math.max(porn, hentai) };
+      }
+      if (sexy > 0.70) {
+        return { block: true, reason: "Jinsiy kontent", confident: true, score: sexy };
+      }
+      if (sexy > 0.50) {
+        return { block: false, suspicious: true, confident: false, score: sexy };
+      }
+    } else {
+      if (porn > 0.85 || hentai > 0.85) {
+        return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score: Math.max(porn, hentai) };
+      }
+      if (porn > 0.60 || hentai > 0.60) {
+        return { block: false, suspicious: true, confident: false, score: Math.max(porn, hentai) };
+      }
     }
-    return { block: false, confident: true, score };
+    const score = Math.max(porn, hentai, sexy);
+    return { block: false, confident: score < 0.25, score };
   }
 
   // ========== CACHE (localStorage, 7 kun) ==========
@@ -261,13 +277,10 @@
   ];
   const META_SUSPECT_KEYWORDS = [
     "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
-    "thirst trap","micro skirt","see through","see-through","bodycon","booty","butt",
-    "tight dress","yoga pants","leggings","transparent","hot girl","model","fashion model",
-    "try on haul","outfit ideas","female body","hips","ass","booty shorts","short skirt",
-    "cosplay","dressootd","outfitlook","lookswap","look swap","big bank","brooke monk",
-    "boat trend","tiktok challenge","challenge","viral shorts","mobilisation","mobilization",
-    "купальник","нижнее белье","стринги","декольте","эрот","облегающ","танец","танцует",
-    "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"
+    "thirst trap","thirst-trap","micro skirt","see through","see-through","bodycon",
+    "booty shorts","short skirt","cosplay","ahegao","upskirt","cameltoe",
+    "купальник","нижнее белье","стринги","декольте","эрот","облегающ",
+    "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","ko'krak","kokrak"
   ];
   const SITE_CONTAINER_SELECTORS = [
     "ytd-rich-item-renderer", "ytd-rich-grid-media", "ytd-rich-grid-slim-media",
@@ -367,16 +380,14 @@
   }
   function collectContext(el, url) {
     const parts = [
-      url, document.title, el.alt, el.title,
+      el.alt, el.title,
       el.getAttribute && el.getAttribute("aria-label"),
-      el.closest && el.closest("a")?.href,
       el.closest && el.closest("a")?.textContent?.slice(0, 80),
-      el.closest && el.closest("article")?.textContent?.slice(0, 160),
-      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 240),
+      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 200),
       el.closest && el.closest("[role='link'],[role='button']")?.getAttribute?.("aria-label"),
-      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 160),
+      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 120),
     ];
-    return parts.filter(Boolean).join(" ").slice(0, 1000);
+    return parts.filter(Boolean).join(" ").slice(0, 600);
   }
   function hasMetaBlockRisk(text) {
     return checkKeywords(text, META_BLOCK_KEYWORDS);
@@ -871,8 +882,7 @@
       else clearPreShield(img);
       return;
     }
-    // Aggressive mode: always send to Cloud AI unless local confidently approved
-    const shouldUseCloud = true;
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || (VISUAL_RISK_HOST && !nsfwReady);
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -901,7 +911,7 @@
     PROCESSING.set(video, key);
     // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
     const contextText = collectContext(video, poster);
-    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText))) {
+    if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) {
       scheduleVideoBurst(video);
     }
     if (local.suspicious || hasSoftMediaRisk(contextText)) {
@@ -915,14 +925,15 @@
           !YOUTUBE_AGGRESSIVE_MODE,
         );
         if (block) shieldElement(video, reason, "cloud");
-        else scheduleVideoBurst(video);
+        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
       });
     } else {
       enqueue(() => captureFrame(video, false));
     }
-    // continuous scan disabled; only visible/new videos are sampled once/burst
-    scheduleVideoBurst(video);
-    video.addEventListener("playing", () => scheduleVideoBurst(video));
+    // continuous scan disabled; only suspicious visible/new videos are sampled once/burst
+    video.addEventListener("playing", () => {
+      if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
+    });
     // continuous scan listener disabled
     video.addEventListener("pause", () => stopContinuousVideoScan(video));
     video.addEventListener("ended", () => stopContinuousVideoScan(video));
