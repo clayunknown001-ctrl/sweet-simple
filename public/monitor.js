@@ -262,6 +262,7 @@
     return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
+  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   // Re-evaluate whitelist when user changes it
   setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
