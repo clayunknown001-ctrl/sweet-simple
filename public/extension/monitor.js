@@ -84,7 +84,10 @@
   let nsfwReady = false;
   let nsfwReqId = 0;
   const nsfwPending = new Map();
-  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || "https://ai-lens-saga.lovable.app/extension/";
+  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || (() => {
+    try { return new URL("./extension/", document.currentScript?.src || "https://huggy-heart-bloom.lovable.app/monitor.js").href; }
+    catch { return "https://huggy-heart-bloom.lovable.app/extension/"; }
+  })();
   function injectNsfwLoader() {
     try {
       const url = (typeof chrome !== "undefined" && chrome.runtime?.getURL?.("nsfw-loader.js")) || (MONITOR_ASSET_BASE + "nsfw-loader.js");
@@ -262,7 +265,6 @@
     return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
-  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   // Re-evaluate whitelist when user changes it
   setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
@@ -451,6 +453,7 @@
       );
     } catch { return false; }
   }
+  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
     return el.closest?.("ytd-rich-item-renderer,ytd-rich-grid-media,ytd-rich-grid-slim-media,ytd-video-renderer,ytd-compact-video-renderer,ytd-grid-video-renderer,ytd-reel-item-renderer,ytm-shorts-lockup-view-model,ytd-reel-video-renderer") || null;
