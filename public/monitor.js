@@ -302,6 +302,7 @@
     "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
     "thirst trap","thirst-trap","micro skirt","see through","see-through","bodycon",
     "booty shorts","short skirt","cosplay","ahegao","upskirt","cameltoe",
+    "naughty","naughty girl","hot girl","sexy girl",
     "купальник","нижнее белье","стринги","декольте","эрот","облегающ",
     "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","ko'krak","kokrak"
   ];
