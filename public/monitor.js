@@ -785,19 +785,19 @@
 
   // ========== AI request ==========
   async function analyzeUrl(url, failClosed = false, fast = true) {
-    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
+    if (!canCallCloud()) return { block: false, reason: "" };
     const key = urlHash(url);
     if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_url: url, fast, language: "uz" }),
+        body: JSON.stringify({ image_url: url, fast: VISUAL_RISK_HOST ? false : fast, language: "uz", youth_protection: true }),
       });
       if (res.status === 402 || res.status === 429) {
-        aiDisabled = true;
-        console.warn("[AI Radar] AI quota tugadi — lokal filtr ishlaydi");
-        return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" };
+        tripAiQuota();
+        console.warn("[AI Radar] AI quota tugadi — 5 min keyin qayta yoqiladi");
+        return { block: false, reason: "" };
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -810,14 +810,14 @@
     }
   }
   async function analyzeBase64(base64, failClosed = false, fast = true) {
-    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
+    if (!canCallCloud()) return { block: false, reason: "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_base64: base64, fast, language: "uz" }),
+        body: JSON.stringify({ image_base64: base64, fast: VISUAL_RISK_HOST ? false : fast, language: "uz", youth_protection: true }),
       });
-      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" }; }
+      if (res.status === 402 || res.status === 429) { tripAiQuota(); return { block: false, reason: "" }; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
