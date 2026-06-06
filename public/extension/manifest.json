@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Radar — Real-Time Content Shield",
-  "version": "2.4.0",
-  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.4: YouTube card-level hard block va video strict detection.",
+  "version": "2.4.1",
+  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.4.1: strict youth vision + risky page image checks.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
