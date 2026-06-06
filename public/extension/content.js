@@ -1,5 +1,5 @@
 /**
- * AI Radar — Content Script v6
+ * AI Radar — Monitor Script v6
  * 3 qatlamli himoya:
  *   1. Whitelist/Blacklist (0ms, lokal)
  *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
@@ -10,10 +10,21 @@
   if (window.__AI_RADAR_LOADED__) return;
   window.__AI_RADAR_LOADED__ = true;
 
+
+  function injectCoreStyles() {
+    if (document.getElementById("ai-radar-core-style")) return;
+    const css = document.createElement("style");
+    css.id = "ai-radar-core-style";
+    css.textContent = `
+.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.safe-blur{filter:blur(25px)!important;transition:filter .5s ease!important;cursor:pointer!important;pointer-events:auto!important}.safe-blur.safe-blur-revealed{filter:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:auto!important;user-select:auto!important}.ai-radar-youtube-hidden-card{display:revert!important;visibility:visible!important;pointer-events:auto!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+    (document.head || document.documentElement).appendChild(css);
+  }
+  injectCoreStyles();
+
   const API_BASE = "https://czxxfudupcikdomidbjl.supabase.co/functions/v1";
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eHhmdWR1cGNpa2RvbWlkYmpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzY2MDMsImV4cCI6MjA5NTY1MjYwM30.gWbO-U6srz-WC1DLUGkGGOpe2iB8kSCgpPgXJ3lrveo";
 
-  const MIN_SIZE = 200; // Smart Filter: kichik logolar/avatarlar/ikonlarni umuman tekshirma
+  const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
   const MAX_CONCURRENT = 8;
   // v10: YouTube card-level hard block + stricter video fail-closed cache.
   const CACHE_KEY = "__ai_radar_cache_v10__";
@@ -22,6 +33,29 @@
   let active = 0;
   let blockedCount = 0;
   let aiDisabled = false;
+  let cloudCallsThisMinute = 0;
+  let cloudMinuteTimer = null;
+  const CLOUD_RATE_LIMIT = 10; // max 10 calls per minute
+  function canCallCloud() {
+    if (aiDisabled) return false;
+    if (cloudCallsThisMinute >= CLOUD_RATE_LIMIT) return false;
+    cloudCallsThisMinute++;
+    if (!cloudMinuteTimer) {
+      cloudMinuteTimer = setTimeout(() => {
+        cloudCallsThisMinute = 0;
+        cloudMinuteTimer = null;
+      }, 60000);
+    }
+    return true;
+  }
+  function tripAiQuota() {
+    aiDisabled = true;
+    setTimeout(() => {
+      aiDisabled = false;
+      cloudCallsThisMinute = 0;
+      console.log("[AI Radar] AI quota reset — filter re-enabled");
+    }, 5 * 60 * 1000);
+  }
   let paused = false;
 
   // Persisted stats (chrome.storage.local)
@@ -50,12 +84,13 @@
   let nsfwReady = false;
   let nsfwReqId = 0;
   const nsfwPending = new Map();
+  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || "https://ai-lens-saga.lovable.app/extension/";
   function injectNsfwLoader() {
     try {
-      const url = chrome.runtime?.getURL?.("nsfw-loader.js");
-      if (!url) return;
+      const url = (typeof chrome !== "undefined" && chrome.runtime?.getURL?.("nsfw-loader.js")) || (MONITOR_ASSET_BASE + "nsfw-loader.js");
       const s = document.createElement("script");
       s.src = url;
+      s.crossOrigin = "anonymous";
       s.onload = () => s.remove();
       (document.head || document.documentElement).appendChild(s);
     } catch {}
@@ -81,10 +116,23 @@
   function fetchImageViaBackground(url) {
     return new Promise((resolve) => {
       try {
-        chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
-          if (chrome.runtime?.lastError) return resolve(null);
-          if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
-        });
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
+            if (chrome.runtime?.lastError) return resolve(null);
+            if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
+          });
+          return;
+        }
+        fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" })
+          .then((res) => res.ok ? res.blob() : null)
+          .then((blob) => {
+            if (!blob || blob.size > 5_000_000) return resolve(null);
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          })
+          .catch(() => resolve(null));
       } catch { resolve(null); }
     });
   }
@@ -105,21 +153,25 @@
     const host = location.hostname.toLowerCase().replace(/^www\./, "");
     return domains.some((d) => host === d || host.endsWith("." + d));
   }
-  // preShield endi click-through (pointer-events:none) — YouTube xavfsiz tarzda qo'shildi.
+  // VISUAL_RISK_DOMAINS — preShield endi click-through (pointer-events:none) va shaffof bo'lgani uchun
+  // YouTube ham xavfsiz tarzda qo'shilgan. Faqat haqiqiy block bo'lganda ai-radar-shield faollashadi.
   const VISUAL_RISK_DOMAINS = [
     "instagram.com", "pinterest.com", "tiktok.com", "youtube.com", "youtu.be",
     "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
   ];
   const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
   const YOUTUBE_HOST = hostMatches(["youtube.com", "youtu.be"]);
+  const YOUTUBE_AGGRESSIVE_MODE = false;
+  const VIDEO_SCAN_TIMERS = new WeakMap();
   const BLOCKED_YOUTUBE_IDS = new Set();
   try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
   function installVisualRiskPrehide() {
-    // Check-then-Block: no pre-shield. Media loads clean; only confirmed risky content is blocked.
+    // Check-then-Block: do NOT pre-blur or pre-shield media. AI analyzes in background;
+    // only confirmed risky content gets blocked. Videos/images load clean by default.
     return;
   }
-
+  // intentionally not invoked
 
   // Lokal NSFW model: strict rejimda Sexy signallar ham hisobga olinadi.
   function decideFromNsfw(preds, strict = false) {
@@ -148,7 +200,6 @@
     const score = Math.max(porn, hentai, sexy);
     return { block: false, confident: score < 0.25, score };
   }
-
 
   // ========== CACHE (localStorage, 7 kun) ==========
   let CACHE = {};
@@ -211,6 +262,7 @@
     return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
+  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   // Re-evaluate whitelist when user changes it
   setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
@@ -251,6 +303,7 @@
     "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
     "thirst trap","thirst-trap","micro skirt","see through","see-through","bodycon",
     "booty shorts","short skirt","cosplay","ahegao","upskirt","cameltoe",
+    "naughty","naughty girl","hot girl","sexy girl",
     "купальник","нижнее белье","стринги","декольте","эрот","облегающ",
     "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","ko'krak","kokrak"
   ];
@@ -265,6 +318,7 @@
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
+    /erotik/i, /erotiqa/i, /bikni/i, /booty/i,
     /pornhub/i, /xvideos/i, /xhamster/i, /redtube/i, /youporn/i, /spankbang/i,
     /onlyfans/i, /chaturbate/i, /stripchat/i, /brazzers/i, /xnxx/i,
     /\/r\/(gonewild|nsfw|porn|nude|hentai)/i,
@@ -328,9 +382,24 @@
     if (YOUTUBE_HOST) urls.push(...youtubeThumbs(extractYouTubeIdFromElement(el)));
     return [...new Set(urls.filter(Boolean))];
   }
-  function containsRiskyKeyword(text) {
+  const EXACT_KWS = new Set(["anal", "cum", "meth", "dick", "cock", "ass", "butt", "gore", "nude", "sex", "tits", "boobs", "hips", "dance", "model", "raqs"]);
+  function checkKeywords(text, keywords) {
     const t = normalizeText(text);
-    return t && RISKY_KEYWORDS.some((kw) => t.includes(kw));
+    if (!t) return false;
+    for (let i = 0; i < keywords.length; i++) {
+      const kw = keywords[i];
+      if (EXACT_KWS.has(kw)) {
+        const regex = new RegExp(`(?:^|[^\\p{L}])${kw}(?:[^\\p{L}]|$)`, "iu");
+        if (regex.test(t)) return true;
+      } else {
+        if (t.includes(kw)) return true;
+      }
+    }
+    return false;
+  }
+
+  function containsRiskyKeyword(text) {
+    return checkKeywords(text, RISKY_KEYWORDS);
   }
   function matchesRiskyUrl(url) {
     return RISKY_URL_PATTERNS.some((re) => re.test(url));
@@ -347,29 +416,40 @@
     return parts.filter(Boolean).join(" ").slice(0, 600);
   }
   function hasMetaBlockRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return META_BLOCK_KEYWORDS.some((kw) => t.includes(kw));
+    return checkKeywords(text, META_BLOCK_KEYWORDS);
   }
   function hasMetaSuspectRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return META_SUSPECT_KEYWORDS.some((kw) => t.includes(kw));
+    return checkKeywords(text, META_SUSPECT_KEYWORDS);
   }
   function hasStrongMediaRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return [
+    return checkKeywords(text, [
       "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
+      "booty","ass","butt nude","naked woman",
       "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
       "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
       "yalang'och","yalangoch","behayo","jinsi a'zo"
-    ].some((kw) => t.includes(kw));
+    ]);
   }
   function hasSoftMediaRisk(text) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    return ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"].some((kw) => t.includes(kw));
+    return checkKeywords(text, ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","booty","big ass","big butt","erotika","erotik","hot girls","sexy girls","bikni","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"]);
+  }
+  function isRiskyPageContext() {
+    try {
+      const decoded = decodeURIComponent(location.href).toLowerCase();
+      const title = (document.title || "").toLowerCase();
+      const combined = decoded + " " + title;
+      return (
+        RISKY_URL_PATTERNS.some(re => re.test(location.href)) ||
+        hasStrongMediaRisk(combined) ||
+        hasSoftMediaRisk(combined) ||
+        hasMetaSuspectRisk(combined) ||
+        checkKeywords(combined, [
+          "hot girl","sexy girl","bikini","swimsuit","nude","naked",
+          "erotika","erotik","erotic","lingerie","bikni","booty",
+          "ass","ass girl","butt","thong","topless","nsfw"
+        ])
+      );
+    } catch { return false; }
   }
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
@@ -388,9 +468,10 @@
     return el.parentElement || el;
   }
   function preShield(el, reason = "Tekshirilmoqda") {
-    if (WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield) return;
+    if (WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
     const r = el.getBoundingClientRect();
-    if ((r.width || el.offsetWidth || 0) < MIN_SIZE || (r.height || el.offsetHeight || 0) < MIN_SIZE) return;
+    const min = minSizeFor(el);
+    if ((r.width || el.offsetWidth || 0) < min || (r.height || el.offsetHeight || 0) < min) return;
     el.dataset.aiRadarPreShield = "1";
     const box = nearestMediaContainer(el);
     if (!box || box.dataset.aiRadarPreShieldBox) return;
@@ -414,21 +495,17 @@
     } catch {}
   }
   function localBlockDecision(el, url) {
-    // v11: faqat aniq xavfli signal bo'lsa BLOCK; aks holda — SUSPICIOUS yoki SAFE.
-    // Page-context'dan meta keywordlar endi avtomatik blok bermaydi (false-positive juda ko'p edi).
+    // Partner Mode: meta/page context never blocks by itself; it only decides whether AI should inspect.
     const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
     const pageContext = collectContext(el, url);
     if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) {
       return { block: true, reason: "Xavfli media URL/matn" };
     }
-    // Strong meta risk faqat pageContext'da bo'lsa — suspicious deb belgilanadi,
-    // keyin NSFW model qaror beradi. Bu Instagram/Youtubedagi soxta bloklarni kamaytiradi.
     if (hasStrongMediaRisk(pageContext) || hasMetaBlockRisk(pageContext) || hasSoftMediaRisk(mediaText) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
       return { block: false, suspicious: true, reason: "Riskli kontekst" };
     }
     return { block: false };
   }
-
 
   // ========== Domen blok ==========
   if (isBlockedDomain()) {
@@ -461,31 +538,7 @@
     const id = extractYouTubeId(a.href);
     return !!id && BLOCKED_YOUTUBE_IDS.has(id);
   }
-  // Smart Filter: shield ustiga bosilsa — blur'ni ochib/yopib qo'yamiz (foydalanuvchi xohlasa ko'rsin).
-  const shieldToggle = (e) => {
-    const sh = e.target?.closest?.(".ai-radar-shield");
-    if (!sh) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    sh.classList.toggle("ai-radar-revealed");
-    return false;
-  };
-  document.addEventListener("click", shieldToggle, { capture: true, passive: false });
-
-  // Sherik AI: .safe-blur ustiga bosilsa — manual override (blur'ni ochish/yopish)
-  document.addEventListener("click", (e) => {
-    const t = e.target;
-    if (!t || !t.classList) return;
-    if (t.classList.contains("safe-blur")) {
-      e.preventDefault();
-      e.stopPropagation();
-      t.classList.toggle("safe-blur-revealed");
-    }
-  }, { capture: true, passive: false });
-
   const hardStop = (e) => {
-    if (e.target?.closest?.(".ai-radar-shield")) return; // shield bosilishi shieldToggle'da
     const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
     if (!blocked && !isBlockedYoutubeNavigation(e.target)) return;
     e.preventDefault();
@@ -494,7 +547,6 @@
     return false;
   };
   STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
-
 
   function neutralizeContainer(el) {
     rememberBlockedYoutube(el);
@@ -524,8 +576,6 @@
     return false;
   }
 
-  // Sherik AI: yumshoq blur — elementni buzmasdan, faqat blur qo'yadi.
-  // Foydalanuvchi bossa — blur ochiladi (manual override).
   function softBlur(el, reason) {
     if (!el || el.dataset.aiRadarBlocked || el.classList.contains("safe-blur")) return;
     el.classList.add("safe-blur");
@@ -537,6 +587,14 @@
     persistStats({ lastBlock: { reason: reason || "soft-blur", host: location.hostname, ts: Date.now() } });
     try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
   }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!t || !t.classList?.contains("safe-blur")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    t.classList.toggle("safe-blur-revealed");
+  }, { capture: true, passive: false });
 
   function shieldElement(el, reason, source = "local") {
     if (VISUAL_RISK_HOST && (el.tagName === "IMG" || el.tagName === "VIDEO")) {
@@ -726,38 +784,41 @@
     const h = r.height || el.offsetHeight || el.naturalHeight || el.videoHeight || 0;
     return { w, h };
   }
+  function minSizeFor(el) {
+    if (YOUTUBE_AGGRESSIVE_MODE && (el?.tagName === "IMG" || el?.tagName === "VIDEO")) return 110;
+    return MIN_SIZE;
+  }
 
   function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
-    // Check-then-Block: never block on analysis failure.
+    // Check-then-Block: never block on analysis failure. Only confirmed AI verdicts block.
     return false;
   }
 
-  async function firstBlockingAnalysis(urls, failClosed = false) {
-    let last = { block: false, reason: "" };
+  async function firstBlockingAnalysis(urls, failClosed = false, fast = true) {
+    let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
     for (const u of urls) {
-      const result = await analyzeMediaUrlPreferBase64(u, failClosed);
+      const result = await analyzeMediaUrlPreferBase64(u, failClosed, fast);
       last = result;
       if (result.block) return result;
     }
     return last;
   }
 
-
   // ========== AI request ==========
-  async function analyzeUrl(url, failClosed = false) {
-    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
+  async function analyzeUrl(url, failClosed = false, fast = true) {
+    if (!canCallCloud()) return { block: false, reason: "" };
     const key = urlHash(url);
     if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_url: url, fast: true, language: "uz" }),
+        body: JSON.stringify({ image_url: url, fast: VISUAL_RISK_HOST ? false : fast, language: "uz", youth_protection: true }),
       });
       if (res.status === 402 || res.status === 429) {
-        aiDisabled = true;
-        console.warn("[AI Radar] AI quota tugadi — lokal filtr ishlaydi");
-        return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" };
+        tripAiQuota();
+        console.warn("[AI Radar] AI quota tugadi — 5 min keyin qayta yoqiladi");
+        return { block: false, reason: "" };
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -769,49 +830,30 @@
       return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" };
     }
   }
-  async function analyzeBase64(base64, failClosed = false) {
-    if (aiDisabled) return { block: failClosed, reason: failClosed ? "AI tekshiruvi mavjud emas — xavfsizlik bloki" : "" };
+  async function analyzeBase64(base64, failClosed = false, fast = true) {
+    if (!canCallCloud()) return { block: false, reason: "" };
     try {
       const res = await fetch(`${API_BASE}/analyze-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_base64: base64, fast: true, language: "uz" }),
+        body: JSON.stringify({ image_base64: base64, fast: VISUAL_RISK_HOST ? false : fast, language: "uz", youth_protection: true }),
       });
-      if (res.status === 402 || res.status === 429) { aiDisabled = true; return { block: failClosed, reason: failClosed ? "AI kvota tugadi — xavfsizlik bloki" : "" }; }
+      if (res.status === 402 || res.status === 429) { tripAiQuota(); return { block: false, reason: "" }; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
     } catch { return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" }; }
   }
-  async function analyzeMediaUrlPreferBase64(url, failClosed = false) {
+  async function analyzeMediaUrlPreferBase64(url, failClosed = false, fast = true) {
     if (!url) return { block: failClosed, reason: failClosed ? "Media URL topilmadi — xavfsizlik bloki" : "" };
-    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed);
+    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed, fast);
     const dataUrl = await fetchImageViaBackground(url);
-    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed);
-    return analyzeUrl(url, failClosed);
+    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed, fast);
+    return analyzeUrl(url, failClosed, fast);
   }
 
-  // ========== Queue (cap + dedup) ==========
-  const MAX_QUEUE = 60;
-  const ANALYZED_KEYS = new Set(); // url-hash | yt:videoId — bir marta tekshirildi
-  function markAnalyzed(...keys) { keys.filter(Boolean).forEach((k) => ANALYZED_KEYS.add(k)); if (ANALYZED_KEYS.size > 4000) { const it = ANALYZED_KEYS.values(); for (let i = 0; i < 1000; i++) ANALYZED_KEYS.delete(it.next().value); } }
-  function alreadyAnalyzed(el, url) {
-    const k1 = url ? urlHash(url) : "";
-    const ytId = YOUTUBE_HOST ? extractYouTubeIdFromElement(el) : "";
-    const k2 = ytId ? "yt:" + ytId : "";
-    if (k1 && ANALYZED_KEYS.has(k1)) return true;
-    if (k2 && ANALYZED_KEYS.has(k2)) return true;
-    return false;
-  }
-  function rememberAnalyzed(el, url) {
-    const k1 = url ? urlHash(url) : "";
-    const ytId = YOUTUBE_HOST ? extractYouTubeIdFromElement(el) : "";
-    markAnalyzed(k1, ytId ? "yt:" + ytId : "");
-  }
-  function enqueue(task) {
-    if (QUEUE.length >= MAX_QUEUE) return; // ortiqcha yukni tashlab yuborish
-    QUEUE.push(task); drain();
-  }
+  // ========== Queue ==========
+  function enqueue(task) { QUEUE.push(task); drain(); }
   function drain() {
     while (active < MAX_CONCURRENT && QUEUE.length) {
       const t = QUEUE.shift();
@@ -820,25 +862,22 @@
     }
   }
 
-
   // ========== Scanners ==========
   async function processImage(img) {
     if (paused) return;
-    if (img.dataset.aiRadarBlocked || img.dataset.aiRadarSafe) return;
+    if (img.dataset.aiRadarBlocked) return;
     const url = mediaUrl(img);
     if (!url || url === BLANK_PIXEL || url.length < 10) return;
     if (PROCESSING.get(img) === url) return;
-    if (alreadyAnalyzed(img, url)) { img.dataset.aiRadarSafe = "1"; return; }
     if (!img.complete || !img.naturalWidth) {
       img.addEventListener("load", () => processImage(img), { once: true });
       return;
     }
-    if (img.naturalWidth < MIN_SIZE || img.naturalHeight < MIN_SIZE) return;
+    const min = minSizeFor(img);
+    if (img.naturalWidth < min || img.naturalHeight < min) return;
 
     PROCESSING.set(img, url);
-    rememberAnalyzed(img, url);
-
-    // Check-then-Block: no pre-shield; image stays visible during analysis.
+    // Check-then-Block: no pre-shield. Image stays visible during analysis.
 
     // 1. Local URL/keyword
     const local = localBlockDecision(img, url);
@@ -876,8 +915,19 @@
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    const highSkin = !error && skinPct > (VISUAL_RISK_HOST ? 0.26 : 0.48) && img.naturalWidth >= 220;
-    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !error && skinPct > 0.18) {
+    let finalSkinPct = skinPct;
+    let finalSkinError = error;
+    if (error && robustData) {
+      // Canvas failed on cross-origin img — retry with background-fetched dataUrl
+      const tmpImg = new Image();
+      tmpImg.src = robustData;
+      await new Promise(res => { tmpImg.onload = res; tmpImg.onerror = res; setTimeout(res, 2000); });
+      const retry = await analyzeSkinToneLocal(tmpImg);
+      if (!retry.error) { finalSkinPct = retry.skinPct; finalSkinError = false; }
+    }
+
+    const highSkin = !finalSkinError && finalSkinPct > (VISUAL_RISK_HOST ? 0.42 : 0.48) && img.naturalWidth >= 200;
+    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !finalSkinError && finalSkinPct > 0.22) {
       visualSuspicious = true;
     }
 
@@ -888,14 +938,14 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || (VISUAL_RISK_HOST && !nsfwReady);
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || PAGE_RISKY || (!WHITELISTED && isRiskyPageContext());
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
         if (robustData || url.startsWith("data:image/")) {
           const b64 = (robustData || url).split(",")[1];
-          result = await analyzeBase64(b64, failClosed);
-        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed);
+          result = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
+        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed, !YOUTUBE_AGGRESSIVE_MODE);
         if (result.block) shieldElement(img, result.reason, "cloud");
         else clearPreShield(img);
       });
@@ -906,85 +956,49 @@
 
   function processVideo(video) {
     if (paused) return;
-    if (video.dataset.aiRadarBlocked || video.dataset.aiRadarSafe) return;
+    if (video.dataset.aiRadarBlocked) return;
     const poster = analysisUrlForVideo(video);
     const key = `${poster}|${video.currentSrc || video.src || ""}|${location.href}`;
     if (PROCESSING.get(video) === key) return;
-    if (alreadyAnalyzed(video, poster)) { video.dataset.aiRadarSafe = "1"; return; }
     const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
     if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
-    rememberAnalyzed(video, poster);
-    // Check-then-Block: no pre-shield; video remains playable during analysis.
+    // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
     const contextText = collectContext(video, poster);
-    // v11: faqat StrongMediaRisk → darhol blok. Soft signal — frame-level NSFW model hal qiladi.
-    if (YOUTUBE_HOST && hasStrongMediaRisk(contextText)) {
-      shieldElement(video, "YouTube xavfli kontekst", "local");
-      return;
-    }
-    if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
-      enqueue(async () => {
-        const { block, reason } = await firstBlockingAnalysis(analysisUrlsForElement(video, poster), shouldFailClosed(video, local, local.suspicious));
-        if (block) shieldElement(video, reason, "cloud");
-        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
-        else clearPreShield(video);
-      });
-    } else if (local.suspicious) {
-      enqueue(() => captureFrame(video, false));
-    }
-
     if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) {
       scheduleVideoBurst(video);
     }
-
-    // Sherik AI — STAGE 2 (Active Watch):
-    // Foydalanuvchi 'play' bossagina chuqur tahlil. Videoni to'xtatmaymiz —
-    // har 2.5s da fon (background) frame analyz, faqat haqiqatan xavfli bo'lsa softBlur.
-    if (!video.dataset.aiRadarPartnerBound) {
-      video.dataset.aiRadarPartnerBound = "1";
-      const startWatch = () => {
-        if (video.dataset.aiRadarWatching || video.dataset.aiRadarBlocked || paused) return;
-        video.dataset.aiRadarWatching = "1";
-        const tick = async () => {
-          if (video.paused || !document.contains(video) || video.dataset.aiRadarBlocked) {
-            delete video.dataset.aiRadarWatching;
-            return;
-          }
-          try {
-            if (video.readyState >= 2 && nsfwReady) {
-              const W = Math.min(video.videoWidth || 256, 320);
-              const H = Math.min(video.videoHeight || 256, 320);
-              if (W > 0 && H > 0) {
-                const dataUrl = captureFrameDataUrl(video, W, H);
-                const r = await classifyLocal(dataUrl, 3500);
-                if (r && r.preds) {
-                  const dec = decideFromNsfw(r.preds, true);
-                  if (dec?.block) {
-                    softBlur(video, dec.reason); // video to'xtamasdan blur
-                    delete video.dataset.aiRadarWatching;
-                    return;
-                  }
-                }
-              }
-            }
-          } catch {}
-          setTimeout(tick, 2500);
-        };
-        tick();
-      };
-      video.addEventListener("play", startWatch);
-      video.addEventListener("pause", () => { delete video.dataset.aiRadarWatching; });
+    if (local.suspicious || hasSoftMediaRisk(contextText)) {
+      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, false); }, 250);
     }
+    if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
+      enqueue(async () => {
+        const { block, reason } = await firstBlockingAnalysis(
+          analysisUrlsForElement(video, poster),
+          shouldFailClosed(video, local, true),
+          !YOUTUBE_AGGRESSIVE_MODE,
+        );
+        if (block) shieldElement(video, reason, "cloud");
+        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
+      });
+    } else {
+      enqueue(() => captureFrame(video, false));
+    }
+    // continuous scan disabled; only suspicious visible/new videos are sampled once/burst
+    video.addEventListener("playing", () => {
+      if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
+    });
+    // continuous scan listener disabled
+    video.addEventListener("pause", () => stopContinuousVideoScan(video));
+    video.addEventListener("ended", () => stopContinuousVideoScan(video));
   }
-
-
 
   function scheduleVideoBurst(video) {
     if (video.dataset.aiRadarBursting) return;
     video.dataset.aiRadarBursting = "1";
-    // v11: 9 ta frame → 2 ta (CPU yukini ~5x kamaytiradi).
+    // Partner Mode: short burst only; no endless/continuous video analysis.
     [600, 3000].forEach((ms) => {
       setTimeout(() => {
         if (!video.dataset.aiRadarBlocked && document.contains(video)) captureFrame(video, false);
@@ -993,6 +1007,23 @@
     setTimeout(() => { try { delete video.dataset.aiRadarBursting; } catch {} }, 8000);
   }
 
+  function stopContinuousVideoScan(video) {
+    const timer = VIDEO_SCAN_TIMERS.get(video);
+    if (timer) clearInterval(timer);
+    VIDEO_SCAN_TIMERS.delete(video);
+  }
+  function startContinuousVideoScan(video) {
+    if (VIDEO_SCAN_TIMERS.has(video)) return;
+    const timer = setInterval(() => {
+      if (!document.contains(video) || video.dataset.aiRadarBlocked) {
+        stopContinuousVideoScan(video);
+        return;
+      }
+      if (video.paused || video.ended || video.readyState < 2) return;
+      captureFrame(video, true);
+    }, 2200);
+    VIDEO_SCAN_TIMERS.set(video, timer);
+  }
 
   function captureFrameDataUrl(video, w, h) {
     const c = document.createElement("canvas");
@@ -1050,7 +1081,7 @@
         // 2. Cloud (faqat shubhali kadr)
         if (aiDisabled) continue;
         const b64 = dataUrl.split(",")[1];
-        const { block, reason } = await analyzeBase64(b64, failClosed);
+        const { block, reason } = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
         if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
@@ -1070,7 +1101,7 @@
       }
       if (aiDisabled) { if (failClosed) shieldElement(video, "AI mavjud emas — video xavfsizlik bloki", "local"); else clearPreShield(video); return; }
       const b64 = dataUrl.split(",")[1];
-      const { block, reason } = await analyzeBase64(b64, failClosed);
+      const { block, reason } = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
       if (block) shieldElement(video, reason, "cloud");
       else clearPreShield(video);
     } catch {}
@@ -1091,7 +1122,8 @@
     // Partner Mode: no pre-blocking; analyze only visible/new media in background
     io.observe(el);
     const { w, h } = mediaVisibleSize(el);
-    if (w >= MIN_SIZE && h >= MIN_SIZE) {
+    const min = minSizeFor(el);
+    if (w >= min && h >= min) {
       if (el.tagName === "IMG") processImage(el);
       else processVideo(el);
     }
@@ -1124,34 +1156,15 @@
     }
   });
 
-  // v11: EVENT-DRIVEN rescan. setInterval loop o'rniga — debounced rescan
-  // faqat DOM mutatsiyasi, scroll yoki visibilitychange bo'lganda.
-  let rescanTimer = 0;
-  function scheduleRescan(delay = 600) {
-    if (rescanTimer) return;
-    rescanTimer = setTimeout(() => {
-      rescanTimer = 0;
-      if (paused || document.hidden) return;
-      document.querySelectorAll("img, video").forEach(observe);
-    }, delay);
-  }
-
   function start() {
     mo.observe(document.documentElement, {
       childList: true, subtree: true,
       attributes: true, attributeFilter: ["src", "poster", "srcset"],
     });
     document.querySelectorAll("img, video").forEach(observe);
-    // Foydalanuvchi harakatlariga reaktiv (loop emas)
-    let scrollT = 0;
-    window.addEventListener("scroll", () => {
-      if (scrollT) return;
-      scrollT = setTimeout(() => { scrollT = 0; scheduleRescan(300); }, 250);
-    }, { passive: true });
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleRescan(200); });
-    console.log(`%c[AI Radar v11] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "smart monitoring"}`, "color:#10b981;font-weight:bold");
+    // interval rescan disabled; MutationObserver + scroll rescan handles new media
+    console.log(`%c[AI Radar v6] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
   }
-
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start, { once: true });

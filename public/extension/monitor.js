@@ -262,6 +262,7 @@
     return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
+  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   // Re-evaluate whitelist when user changes it
   setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
@@ -317,6 +318,7 @@
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
+    /erotik/i, /erotiqa/i, /bikni/i, /booty/i,
     /pornhub/i, /xvideos/i, /xhamster/i, /redtube/i, /youporn/i, /spankbang/i,
     /onlyfans/i, /chaturbate/i, /stripchat/i, /brazzers/i, /xnxx/i,
     /\/r\/(gonewild|nsfw|porn|nude|hentai)/i,
@@ -422,13 +424,32 @@
   function hasStrongMediaRisk(text) {
     return checkKeywords(text, [
       "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
+      "booty","ass","butt nude","naked woman",
       "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
       "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
       "yalang'och","yalangoch","behayo","jinsi a'zo"
     ]);
   }
   function hasSoftMediaRisk(text) {
-    return checkKeywords(text, ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"]);
+    return checkKeywords(text, ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","booty","big ass","big butt","erotika","erotik","hot girls","sexy girls","bikni","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"]);
+  }
+  function isRiskyPageContext() {
+    try {
+      const decoded = decodeURIComponent(location.href).toLowerCase();
+      const title = (document.title || "").toLowerCase();
+      const combined = decoded + " " + title;
+      return (
+        RISKY_URL_PATTERNS.some(re => re.test(location.href)) ||
+        hasStrongMediaRisk(combined) ||
+        hasSoftMediaRisk(combined) ||
+        hasMetaSuspectRisk(combined) ||
+        checkKeywords(combined, [
+          "hot girl","sexy girl","bikini","swimsuit","nude","naked",
+          "erotika","erotik","erotic","lingerie","bikni","booty",
+          "ass","ass girl","butt","thong","topless","nsfw"
+        ])
+      );
+    } catch { return false; }
   }
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
@@ -917,7 +938,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin;
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || PAGE_RISKY || (!WHITELISTED && isRiskyPageContext());
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
