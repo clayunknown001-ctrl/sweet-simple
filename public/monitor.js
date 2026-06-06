@@ -84,7 +84,10 @@
   let nsfwReady = false;
   let nsfwReqId = 0;
   const nsfwPending = new Map();
-  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || "https://ai-lens-saga.lovable.app/extension/";
+  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || (() => {
+    try { return new URL("./extension/", document.currentScript?.src || "https://huggy-heart-bloom.lovable.app/monitor.js").href; }
+    catch { return "https://huggy-heart-bloom.lovable.app/extension/"; }
+  })();
   function injectNsfwLoader() {
     try {
       const url = (typeof chrome !== "undefined" && chrome.runtime?.getURL?.("nsfw-loader.js")) || (MONITOR_ASSET_BASE + "nsfw-loader.js");
