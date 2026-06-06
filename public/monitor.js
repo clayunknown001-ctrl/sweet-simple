@@ -966,7 +966,7 @@
     if (PROCESSING.get(video) === key) return;
     const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
-    if (WHITELISTED) return;
+    if (WHITELISTED && !isRiskyPageContext()) return;
 
     PROCESSING.set(video, key);
     // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
