@@ -24,6 +24,7 @@ serve(async (req) => {
       caption, alt, title, page_url,
       nsfw_probs,                                  // { porn, hentai, sexy, neutral, drawing }
       language = "en",
+      youth_protection = false,
     } = body || {};
 
     if (!image_url && !image_base64) {
@@ -33,7 +34,7 @@ serve(async (req) => {
     }
 
     const captionText = [caption, alt, title].filter(Boolean).join(" | ");
-    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}`);
+    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}|yp:${youth_protection ? 1 : 0}`);
 
     const cached = getCached(contentHash);
     if (cached) {
@@ -42,8 +43,20 @@ serve(async (req) => {
       });
     }
 
+    // Youth protection mode: tighten NSFW thresholds before scoring
+    let effectiveNsfw = nsfw_probs;
+    if (youth_protection && nsfw_probs) {
+      effectiveNsfw = {
+        porn:    Math.min(1, (nsfw_probs.porn    ?? 0) * 1.6),
+        hentai:  Math.min(1, (nsfw_probs.hentai  ?? 0) * 1.6),
+        sexy:    Math.min(1, (nsfw_probs.sexy    ?? 0) * 1.8),
+        neutral: nsfw_probs.neutral,
+        drawing: nsfw_probs.drawing,
+      };
+    }
+
     let analysis = buildLocalImageAnalysis({
-      url: image_url, caption: captionText, pageUrl: page_url, nsfw_probs,
+      url: image_url, caption: captionText, pageUrl: page_url, nsfw_probs: effectiveNsfw,
     });
 
     // Hard URL block override (unsafe domain)
@@ -54,6 +67,24 @@ serve(async (req) => {
       analysis.harmful_content.severity = "high";
       analysis.block_reason = `Unsafe domain: ${urlLocal.signals.join(", ")}`;
     }
+
+    // Youth protection: block on any suggestive signal or moderate NSFW probability
+    if (youth_protection && !analysis.should_block) {
+      const p = nsfw_probs || {};
+      const ypBlock =
+        (p.porn   ?? 0) >= 0.30 ||
+        (p.hentai ?? 0) >= 0.30 ||
+        (p.sexy   ?? 0) >= 0.40 ||
+        (analysis.nsfw_probability ?? 0) >= 0.45;
+      if (ypBlock) {
+        analysis.should_block = true;
+        analysis.harmful_content.is_harmful = true;
+        analysis.harmful_content.severity = analysis.harmful_content.severity || "high";
+        analysis.harmful_content.categories = [...(analysis.harmful_content.categories || []), "youth-protection"];
+        analysis.block_reason = analysis.block_reason || "Youth protection: suggestive/revealing content blocked for under-13 browser";
+      }
+    }
+
 
     const gated = runGate({ analysis, kind: "image", contentHash });
     setCached(contentHash, gated.analysis);
