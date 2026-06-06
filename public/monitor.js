@@ -938,7 +938,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin;
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || PAGE_RISKY || (!WHITELISTED && isRiskyPageContext());
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
