@@ -894,8 +894,19 @@
     const { skinPct, error } = await analyzeSkinToneLocal(img);
     img.classList.remove("ai-radar-scanning");
 
-    const highSkin = !error && skinPct > (VISUAL_RISK_HOST ? 0.26 : 0.48) && img.naturalWidth >= 220;
-    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !error && skinPct > 0.18) {
+    let finalSkinPct = skinPct;
+    let finalSkinError = error;
+    if (error && robustData) {
+      // Canvas failed on cross-origin img — retry with background-fetched dataUrl
+      const tmpImg = new Image();
+      tmpImg.src = robustData;
+      await new Promise(res => { tmpImg.onload = res; tmpImg.onerror = res; setTimeout(res, 2000); });
+      const retry = await analyzeSkinToneLocal(tmpImg);
+      if (!retry.error) { finalSkinPct = retry.skinPct; finalSkinError = false; }
+    }
+
+    const highSkin = !finalSkinError && finalSkinPct > (VISUAL_RISK_HOST ? 0.42 : 0.48) && img.naturalWidth >= 200;
+    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !finalSkinError && finalSkinPct > 0.22) {
       visualSuspicious = true;
     }
 
@@ -906,7 +917,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || (VISUAL_RISK_HOST && !nsfwReady);
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
