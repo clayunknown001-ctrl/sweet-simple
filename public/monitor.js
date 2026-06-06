@@ -33,6 +33,29 @@
   let active = 0;
   let blockedCount = 0;
   let aiDisabled = false;
+  let cloudCallsThisMinute = 0;
+  let cloudMinuteTimer = null;
+  const CLOUD_RATE_LIMIT = 10; // max 10 calls per minute
+  function canCallCloud() {
+    if (aiDisabled) return false;
+    if (cloudCallsThisMinute >= CLOUD_RATE_LIMIT) return false;
+    cloudCallsThisMinute++;
+    if (!cloudMinuteTimer) {
+      cloudMinuteTimer = setTimeout(() => {
+        cloudCallsThisMinute = 0;
+        cloudMinuteTimer = null;
+      }, 60000);
+    }
+    return true;
+  }
+  function tripAiQuota() {
+    aiDisabled = true;
+    setTimeout(() => {
+      aiDisabled = false;
+      cloudCallsThisMinute = 0;
+      console.log("[AI Radar] AI quota reset — filter re-enabled");
+    }, 5 * 60 * 1000);
+  }
   let paused = false;
 
   // Persisted stats (chrome.storage.local)
