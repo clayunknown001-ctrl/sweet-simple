@@ -90,7 +90,7 @@ serve(async (req) => {
     }
 
     const captionText = [caption, alt, title].filter(Boolean).join(" | ");
-    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}|yp:${youth_protection ? 1 : 0}`);
+    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}|yp:${youth_protection ? 1 : 0}|strict-youth-vision-v1`);
 
     const cached = getCached(contentHash);
     if (cached) {
