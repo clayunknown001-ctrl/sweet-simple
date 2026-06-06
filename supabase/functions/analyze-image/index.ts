@@ -115,6 +115,24 @@ serve(async (req) => {
       url: image_url, caption: captionText, pageUrl: page_url, nsfw_probs: effectiveNsfw,
     });
 
+    const strictVision = await runStrictVisionReview(image_url, image_base64);
+    if (strictVision?.quotaStatus) {
+      return new Response(JSON.stringify({ error: "AI quota temporarily unavailable", should_block: false }), {
+        status: strictVision.quotaStatus, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (strictVision?.shouldBlock) {
+      analysis.should_block = true;
+      analysis.confidence = Math.max(analysis.confidence ?? 0, 0.95);
+      analysis.description = "Strict youth-protection vision review flagged revealing or suggestive content";
+      analysis.scene_type = "adult";
+      analysis.harmful_content.is_harmful = true;
+      analysis.harmful_content.severity = "high";
+      analysis.harmful_content.categories = [...(analysis.harmful_content.categories || []), "adult", "youth-protection"];
+      analysis.harmful_content.details = "strict youth-protection visual block";
+      analysis.block_reason = "Youth protection: revealing/suggestive visual content";
+    }
+
     // Hard URL block override (unsafe domain)
     const urlLocal = analyzeUrlLocal(image_url);
     if (urlLocal.shouldBlock && urlLocal.confidence >= 0.9) {
