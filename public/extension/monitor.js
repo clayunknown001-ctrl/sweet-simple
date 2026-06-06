@@ -453,7 +453,7 @@
       );
     } catch { return false; }
   }
-  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
+  const PAGE_RISKY = isRiskyPageContext();
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
     return el.closest?.("ytd-rich-item-renderer,ytd-rich-grid-media,ytd-rich-grid-slim-media,ytd-video-renderer,ytd-compact-video-renderer,ytd-grid-video-renderer,ytd-reel-item-renderer,ytm-shorts-lockup-view-model,ytd-reel-video-renderer") || null;
@@ -887,7 +887,8 @@
     if (local.block) { shieldElement(img, local.reason, "local"); return; }
 
     // 2. Whitelist domain → AI'siz o'tkaz
-    if (WHITELISTED) return;
+    const pageRiskyNow = PAGE_RISKY || isRiskyPageContext();
+    if (WHITELISTED && !pageRiskyNow) return;
 
     img.classList.add("ai-radar-scanning");
 
@@ -905,7 +906,7 @@
           shieldElement(img, decision.reason, "local");
           return;
         }
-        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious) {
+        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious && !pageRiskyNow) {
           img.classList.remove("ai-radar-scanning");
           clearPreShield(img);
           noteLocalApproved();
@@ -941,7 +942,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || PAGE_RISKY || (!WHITELISTED && isRiskyPageContext());
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || pageRiskyNow;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -965,7 +966,7 @@
     if (PROCESSING.get(video) === key) return;
     const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
-    if (WHITELISTED) return;
+    if (WHITELISTED && !isRiskyPageContext()) return;
 
     PROCESSING.set(video, key);
     // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
