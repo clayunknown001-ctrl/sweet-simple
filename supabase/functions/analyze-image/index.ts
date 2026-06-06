@@ -1,8 +1,8 @@
 // =============================================================================
-// analyze-image — 100% LOCAL moderation. No external AI APIs.
-// Pixel-level NSFW classification is performed CLIENT-SIDE by NSFWJS
-// (public/extension/nsfw-loader.js). This endpoint scores URL + caption + page
-// context + (optional) client-supplied NSFW probabilities and returns a verdict.
+// analyze-image — strict youth-protection image moderation.
+// Browser-side NSFWJS still supplies local probabilities, then this endpoint
+// applies URL/context heuristics plus a strict vision review for children's
+// browsing where mainstream revealing/suggestive images must be blocked.
 // =============================================================================
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { runGate } from "../_shared/moderation/gate.ts";
