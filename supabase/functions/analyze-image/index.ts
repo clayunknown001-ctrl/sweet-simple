@@ -1,8 +1,8 @@
 // =============================================================================
-// analyze-image — 100% LOCAL moderation. No external AI APIs.
-// Pixel-level NSFW classification is performed CLIENT-SIDE by NSFWJS
-// (public/extension/nsfw-loader.js). This endpoint scores URL + caption + page
-// context + (optional) client-supplied NSFW probabilities and returns a verdict.
+// analyze-image — strict youth-protection image moderation.
+// Browser-side NSFWJS still supplies local probabilities, then this endpoint
+// applies URL/context heuristics plus a strict vision review for children's
+// browsing where mainstream revealing/suggestive images must be blocked.
 // =============================================================================
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { runGate } from "../_shared/moderation/gate.ts";
@@ -13,6 +13,62 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const geminiPrompt = `You are a strict content safety filter for a web browser 
+used by children under 13. Analyze this image carefully.
+Return {"should_block": true} if the image shows ANY of these:
+- A person wearing a bikini, swimsuit, or bathing suit
+- Significant exposed skin: bare midriff, cleavage, bare thighs, or buttocks
+- Lingerie, underwear, or sleepwear being worn
+- A person in a suggestive, sexualized, or provocative pose
+- Tight/revealing clothing that exposes the body in a sexual way  
+- Music video thumbnails with dancers in revealing outfits
+- Any romantic or sexual activity between people
+- Shirtless men/women posed in a sexualized way
+Return {"should_block": false} ONLY for clearly safe content:
+- Sports where players wear uniforms (football, basketball, etc.)
+- News, educational, or documentary content
+- Food, nature, landscapes, buildings
+- People in regular street clothes (fully covered)
+- Children's cartoons or animations
+- Professional/business settings
+Critical rule: When uncertain, ALWAYS return {"should_block": true}.
+This filter protects real children. Missing harmful content is unacceptable.
+Respond ONLY with valid JSON: {"should_block": true} or {"should_block": false}`;
+
+function extractJsonObject(text: string): Record<string, unknown> | null {
+  try { return JSON.parse(text); } catch {}
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
+}
+
+async function runStrictVisionReview(imageUrl?: string, imageBase64?: string) {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) return null;
+  const imagePart = imageBase64
+    ? { type: "image_url", image_url: { url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}` } }
+    : { type: "image_url", image_url: { url: imageUrl } };
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Lovable-API-Key": apiKey,
+      "X-Lovable-AIG-SDK": "edge-fetch",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      temperature: 0,
+      messages: [{ role: "user", content: [{ type: "text", text: geminiPrompt }, imagePart] }],
+    }),
+  });
+  if (res.status === 402 || res.status === 429) return { quotaStatus: res.status };
+  if (!res.ok) throw new Error(`Vision review failed: HTTP ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content || "";
+  const parsed = extractJsonObject(String(text));
+  return { shouldBlock: parsed?.should_block === true };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -34,7 +90,7 @@ serve(async (req) => {
     }
 
     const captionText = [caption, alt, title].filter(Boolean).join(" | ");
-    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}|yp:${youth_protection ? 1 : 0}`);
+    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}|yp:${youth_protection ? 1 : 0}|strict-youth-vision-v1`);
 
     const cached = getCached(contentHash);
     if (cached) {
@@ -58,6 +114,24 @@ serve(async (req) => {
     let analysis = buildLocalImageAnalysis({
       url: image_url, caption: captionText, pageUrl: page_url, nsfw_probs: effectiveNsfw,
     });
+
+    const strictVision = await runStrictVisionReview(image_url, image_base64);
+    if (strictVision?.quotaStatus) {
+      return new Response(JSON.stringify({ error: "AI quota temporarily unavailable", should_block: false }), {
+        status: strictVision.quotaStatus, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (strictVision?.shouldBlock) {
+      analysis.should_block = true;
+      analysis.confidence = Math.max(analysis.confidence ?? 0, 0.95);
+      analysis.description = "Strict youth-protection vision review flagged revealing or suggestive content";
+      analysis.scene_type = "adult";
+      analysis.harmful_content.is_harmful = true;
+      analysis.harmful_content.severity = "high";
+      analysis.harmful_content.categories = [...(analysis.harmful_content.categories || []), "adult", "youth-protection"];
+      analysis.harmful_content.details = "strict youth-protection visual block";
+      analysis.block_reason = "Youth protection: revealing/suggestive visual content";
+    }
 
     // Hard URL block override (unsafe domain)
     const urlLocal = analyzeUrlLocal(image_url);
