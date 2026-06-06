@@ -265,7 +265,6 @@
     return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
   }
   let WHITELISTED = isWhitelisted();
-  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   // Re-evaluate whitelist when user changes it
   setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
 
@@ -454,6 +453,7 @@
       );
     } catch { return false; }
   }
+  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
     return el.closest?.("ytd-rich-item-renderer,ytd-rich-grid-media,ytd-rich-grid-slim-media,ytd-video-renderer,ytd-compact-video-renderer,ytd-grid-video-renderer,ytd-reel-item-renderer,ytm-shorts-lockup-view-model,ytd-reel-video-renderer") || null;
