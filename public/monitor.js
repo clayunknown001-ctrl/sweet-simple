@@ -9,7 +9,7 @@
   if (/^(chrome|edge|about|moz-extension|chrome-extension)/.test(location.protocol)) return;
 
   const API_BASE = "https://iwyntbeqdvsbzvmskpaw.supabase.co/functions/v1";
-  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpwyntbeqdvsbzvmskpawIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3eW50YmVxZHZzYnp2bXNrcGF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDkyOTYsImV4cCI6MjA4ODAyNTI5Nn0.dwvan4-1Mifxo6r3WzFqxmdMiByJ63h1Jk4rkvUrc0g";
   const MIN = 96, MAX_ACTIVE = 6, CACHE_TTL = 30 * 60 * 1000, CLOUD_LIMIT = 24;
   const STOP = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"];
   const st = { paused:false, active:0, q:[], cache:new Map(), seen:new WeakMap(), overlays:new WeakMap(), nsfw:false, rid:0, wait:new Map(), cloud:0, cloudOff:false, stats:{totalBlocked:0,localBlocked:0,cloudBlocked:0,localApproved:0} };
