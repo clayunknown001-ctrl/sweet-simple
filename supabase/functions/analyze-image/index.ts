@@ -1,14 +1,12 @@
 // Supabase Edge Function: analyze-image
-// Bu faylni: supabase/functions/analyze-image/index.ts ga qo'ying
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ========== GEMINI PROMPT (YOUTH PROTECTION) ==========
 const YOUTH_PROTECTION_PROMPT = `You are a strict content safety filter for a web browser used exclusively by children under 13 years old.
 
 Analyze the provided image and return {"should_block": true} if the image shows ANY of the following:
@@ -24,7 +22,7 @@ Analyze the provided image and return {"should_block": true} if the image shows 
 - Partial nudity, even if artistic or non-explicit
 
 Return {"should_block": false} ONLY for clearly safe content such as:
-- Sports action shots where players wear standard uniforms (football, basketball, tennis, etc.)
+- Sports action shots where players wear standard uniforms
 - News, documentary, or educational images
 - Food, nature, landscapes, buildings, or objects
 - People wearing regular everyday street clothing (fully covered)
@@ -34,98 +32,124 @@ Return {"should_block": false} ONLY for clearly safe content such as:
 
 CRITICAL RULES:
 1. When uncertain, ALWAYS return {"should_block": true}
-2. Do NOT consider whether content is "mainstream" or "commercially published" — a bikini is a bikini regardless of whether it appears in a music video
-3. This filter protects real children. False positives (over-blocking) are acceptable. False negatives (missing harmful content) are NOT acceptable.
+2. Do NOT consider whether content is "mainstream" or "commercially published"
+3. This filter protects real children. False positives are acceptable. False negatives are NOT acceptable.
 
-Respond ONLY with valid JSON. No explanation, no markdown, no extra text.
+Respond ONLY with valid JSON. No explanation, no markdown.
 Examples: {"should_block": true} or {"should_block": false}`;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+// SSRF protection: block private/internal/loopback/link-local hosts
+function isSafeImageUrl(raw: string): { ok: boolean; reason?: string } {
+  let u: URL;
+  try { u = new URL(raw); } catch { return { ok: false, reason: "invalid url" }; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, reason: "scheme not allowed" };
+  const host = u.hostname.toLowerCase();
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) {
+    return { ok: false, reason: "internal host" };
   }
+  // Reject IP literals in private/reserved ranges
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [parseInt(ipv4[1]), parseInt(ipv4[2])];
+    if (
+      a === 10 || a === 127 || a === 0 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    ) return { ok: false, reason: "private ip" };
+  }
+  if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80") || host.includes(":")) {
+    // Block IPv6 literals (incl. link-local/ULA); allow only hostnames
+    if (host.includes(":")) return { ok: false, reason: "ipv6 literal not allowed" };
+  }
+  return { ok: true };
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const body = await req.json();
-    const { image_url, image_base64, fast, language, youth_protection } = body;
-
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      return new Response(JSON.stringify({ error: "Gemini API key not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // ---- AUTHENTICATION ----
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Har doim youth_protection prompt ishlatiladi (bu faqat bolalar brauzeri)
-    const systemPrompt = YOUTH_PROTECTION_PROMPT;
+    const body = await req.json();
+    const { image_url, image_base64, fast } = body;
 
-    // Gemini model tanlash: fast=true bo'lsa flash, aks holda pro
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      // Fail closed
+      return new Response(JSON.stringify({ should_block: true, error: "Gemini API key not configured" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const systemPrompt = YOUTH_PROTECTION_PROMPT;
     const model = fast ? "gemini-1.5-flash" : "gemini-1.5-pro";
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
-    // Rasm qismini tayyorlash
-    let imagePart;
+    let imagePart: any;
     if (image_base64) {
-      // Base64 rasm
       const mediaType = image_base64.startsWith("/9j/") ? "image/jpeg" : "image/png";
-      imagePart = {
-        inlineData: {
-          mimeType: mediaType,
-          data: image_base64,
-        },
-      };
+      imagePart = { inlineData: { mimeType: mediaType, data: image_base64 } };
     } else if (image_url) {
-      // URL orqali rasm
+      const safety = isSafeImageUrl(image_url);
+      if (!safety.ok) {
+        return new Response(JSON.stringify({ should_block: true, error: `Invalid image URL: ${safety.reason}` }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       try {
         const imgResp = await fetch(image_url, {
           headers: { "User-Agent": "Mozilla/5.0 SafeNet-Filter/1.0" },
+          redirect: "error", // do not follow redirects (could redirect to internal)
+          signal: AbortSignal.timeout(5000),
         });
         if (!imgResp.ok) throw new Error(`Image fetch failed: ${imgResp.status}`);
         const imgBuffer = await imgResp.arrayBuffer();
         const imgBytes = new Uint8Array(imgBuffer);
-        // base64 ga convert
         let binary = "";
-        for (let i = 0; i < imgBytes.byteLength; i++) {
-          binary += String.fromCharCode(imgBytes[i]);
-        }
+        for (let i = 0; i < imgBytes.byteLength; i++) binary += String.fromCharCode(imgBytes[i]);
         const base64Data = btoa(binary);
         const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-        imagePart = {
-          inlineData: {
-            mimeType: contentType.split(";")[0],
-            data: base64Data,
-          },
-        };
-      } catch {
-        // URL fetch muvaffaqiyatsiz bo'lsa — URL ni to'g'ridan-to'g'ri Gemini ga ber
-        imagePart = {
-          fileData: {
-            mimeType: "image/jpeg",
-            fileUri: image_url,
-          },
-        };
+        if (!contentType.startsWith("image/")) {
+          return new Response(JSON.stringify({ should_block: true, error: "Not an image" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        imagePart = { inlineData: { mimeType: contentType.split(";")[0], data: base64Data } };
+      } catch (e) {
+        // Fail closed
+        return new Response(JSON.stringify({ should_block: true, error: "Image fetch failed" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     } else {
-      return new Response(JSON.stringify({ should_block: false, error: "No image provided" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ should_block: true, error: "No image provided" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const geminiBody = {
-      contents: [
-        {
-          parts: [
-            { text: systemPrompt },
-            imagePart,
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 50,
-        responseMimeType: "application/json",
-      },
+      contents: [{ parts: [{ text: systemPrompt }, imagePart] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 50, responseMimeType: "application/json" },
     };
 
     const geminiResp = await fetch(geminiUrl, {
@@ -135,33 +159,31 @@ serve(async (req) => {
     });
 
     if (geminiResp.status === 429) {
-      return new Response(JSON.stringify({ error: "rate_limit" }), {
-        status: 429,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // Fail closed on rate limits
+      return new Response(JSON.stringify({ should_block: true, error: "rate_limit" }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (!geminiResp.ok) {
       const errText = await geminiResp.text();
       console.error("Gemini error:", errText);
-      return new Response(JSON.stringify({ should_block: false, error: "Gemini API error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // Fail closed
+      return new Response(JSON.stringify({ should_block: true, error: "Gemini API error" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const geminiData = await geminiResp.json();
     const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
-    let result = { should_block: false };
+    let result: any = { should_block: true }; // default fail-closed
     try {
       const cleaned = rawText.replace(/```json|```/g, "").trim();
       result = JSON.parse(cleaned);
     } catch {
-      // Agar JSON parse muvaffaqiyatsiz bo'lsa va "true" so'zi bo'lsa — block
-      if (rawText.toLowerCase().includes("true")) {
-        result = { should_block: true };
-      }
+      if (rawText.toLowerCase().includes("true")) result = { should_block: true };
+      else result = { should_block: true }; // fail closed
     }
 
     return new Response(
@@ -170,18 +192,14 @@ serve(async (req) => {
         block_reason: result.should_block ? (result.reason || "Youth protection filter") : "",
         category: result.category || "",
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Edge function error:", err);
+    // Fail closed
     return new Response(
-      JSON.stringify({ should_block: false, error: String(err) }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ should_block: true, error: "Internal error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
