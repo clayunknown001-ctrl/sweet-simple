@@ -4,10 +4,10 @@ project_id = "iwyntbeqdvsbzvmskpaw"
 verify_jwt = false
 
 [functions.analyze-image]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-video]
 verify_jwt = false
 
 [functions.moderation-feedback]
-verify_jwt = false
+verify_jwt = true

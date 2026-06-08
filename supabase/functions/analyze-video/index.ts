@@ -22,10 +22,11 @@ serve(async (req) => {
     const {
       video_url, video_base64,
       title, description, page_url,
-      nsfw_probs,
-      frame_signals,
       language = "en",
     } = body || {};
+    // SECURITY: Client-supplied nsfw_probs / frame_signals are NOT trusted server-side.
+    // They could be forged to bypass moderation. Visual analysis stays client-side
+    // for UX only; server-side decisions use only URL/title/description heuristics.
 
     if (!video_url && !video_base64) {
       return new Response(JSON.stringify({ error: "video_url or video_base64 is required" }), {
@@ -42,8 +43,9 @@ serve(async (req) => {
     }
 
     let analysis = buildLocalVideoAnalysis({
-      url: video_url, title, description, pageUrl: page_url, nsfw_probs, frame_signals,
+      url: video_url, title, description, pageUrl: page_url,
     });
+
 
     const urlLocal = analyzeUrlLocal(video_url);
     if (urlLocal.shouldBlock && urlLocal.confidence >= 0.9) {
