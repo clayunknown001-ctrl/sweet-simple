@@ -84,10 +84,7 @@
   let nsfwReady = false;
   let nsfwReqId = 0;
   const nsfwPending = new Map();
-  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || (() => {
-    try { return new URL("./extension/", document.currentScript?.src || "https://huggy-heart-bloom.lovable.app/monitor.js").href; }
-    catch { return "https://huggy-heart-bloom.lovable.app/extension/"; }
-  })();
+  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || "https://ai-lens-saga.lovable.app/extension/";
   function injectNsfwLoader() {
     try {
       const url = (typeof chrome !== "undefined" && chrome.runtime?.getURL?.("nsfw-loader.js")) || (MONITOR_ASSET_BASE + "nsfw-loader.js");
@@ -320,10 +317,12 @@
   const RISKY_URL_PATTERNS = [
     /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
     /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
-    /erotik/i, /erotiqa/i, /bikni/i, /booty/i,
     /pornhub/i, /xvideos/i, /xhamster/i, /redtube/i, /youporn/i, /spankbang/i,
     /onlyfans/i, /chaturbate/i, /stripchat/i, /brazzers/i, /xnxx/i,
     /\/r\/(gonewild|nsfw|porn|nude|hentai)/i,
+    // Qo'shimcha patternlar
+    /erotik/i, /booty/i, /bikni/i, /hot[\-_+]girl/i, /sexy[\-_+]girl/i,
+    /naked[\-_+]girl/i, /nude[\-_+]girl/i, /hot[\-_+]girls/i,
   ];
 
   function normalizeText(v) {
@@ -426,34 +425,51 @@
   function hasStrongMediaRisk(text) {
     return checkKeywords(text, [
       "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
-      "booty","ass","butt nude","naked woman",
       "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
+      "naked girl","naked woman","nude girl","nude woman","big tits","naked teen",
       "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
       "yalang'och","yalangoch","behayo","jinsi a'zo"
     ]);
   }
   function hasSoftMediaRisk(text) {
-    return checkKeywords(text, ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","booty","big ass","big butt","erotika","erotik","hot girls","sexy girls","bikni","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"]);
+    return checkKeywords(text, [
+      "sexy","erotic","lingerie","thong","bikini","swimsuit","bodycon","leggings","tight dress","try on",
+      "cleavage","twerk","grinding","dancer","female giants",
+      // Qo'shimcha so'zlar
+      "booty","big ass","big butt","butt","erotika","erotik","hot girls","sexy girls",
+      "bikni","naughty girls","revealing","bikini girl","swimwear","beachwear",
+      "outfit","dance","бикини","купальник","декольте","танец",
+      "ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"
+    ]);
   }
+
+  // ========== SAHIFA DARAJASI RISK TEKSHIRUVI ==========
+  // URL yoki sahifa sarlavhasida xavfli so'z bor bo'lsa, sahifadagi barcha
+  // katta rasmlar cloud AI ga jo'natiladi (rate-limit bilan).
   function isRiskyPageContext() {
     try {
-      const decoded = decodeURIComponent(location.href).toLowerCase();
+      const href = location.href;
+      const decoded = decodeURIComponent(href).toLowerCase();
       const title = (document.title || "").toLowerCase();
       const combined = decoded + " " + title;
       return (
-        RISKY_URL_PATTERNS.some(re => re.test(location.href)) ||
+        RISKY_URL_PATTERNS.some((re) => re.test(href)) ||
         hasStrongMediaRisk(combined) ||
         hasSoftMediaRisk(combined) ||
         hasMetaSuspectRisk(combined) ||
         checkKeywords(combined, [
           "hot girl","sexy girl","bikini","swimsuit","nude","naked",
           "erotika","erotik","erotic","lingerie","bikni","booty",
-          "ass","ass girl","butt","thong","topless","nsfw"
+          "ass girl","butt girl","thong","topless","nsfw","hot girls",
+          "sexy girls","naughty","naughty girls","girl photos","bikini photos",
+          "revealing","swimwear","big ass","big butt","half naked",
+          "сексуальная","эротическая","голые","обнаженные",
+          "yalang'och qiz","behayo rasm","seksual"
         ])
       );
     } catch { return false; }
   }
-  const PAGE_RISKY = isRiskyPageContext();
+  const PAGE_RISKY = !WHITELISTED && isRiskyPageContext();
   function youtubeCard(el) {
     if (!YOUTUBE_HOST) return null;
     return el.closest?.("ytd-rich-item-renderer,ytd-rich-grid-media,ytd-rich-grid-slim-media,ytd-video-renderer,ytd-compact-video-renderer,ytd-grid-video-renderer,ytd-reel-item-renderer,ytm-shorts-lockup-view-model,ytd-reel-video-renderer") || null;
@@ -887,8 +903,7 @@
     if (local.block) { shieldElement(img, local.reason, "local"); return; }
 
     // 2. Whitelist domain → AI'siz o'tkaz
-    const pageRiskyNow = PAGE_RISKY || isRiskyPageContext();
-    if (WHITELISTED && !pageRiskyNow) return;
+    if (WHITELISTED) return;
 
     img.classList.add("ai-radar-scanning");
 
@@ -906,7 +921,7 @@
           shieldElement(img, decision.reason, "local");
           return;
         }
-        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious && !pageRiskyNow) {
+        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious) {
           img.classList.remove("ai-radar-scanning");
           clearPreShield(img);
           noteLocalApproved();
@@ -942,7 +957,7 @@
       else clearPreShield(img);
       return;
     }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || pageRiskyNow;
+    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || PAGE_RISKY;
     if (shouldUseCloud) {
       enqueue(async () => {
         let result;
@@ -966,33 +981,34 @@
     if (PROCESSING.get(video) === key) return;
     const local = localBlockDecision(video, poster);
     if (local.block) { shieldElement(video, local.reason, "local"); return; }
-    if (WHITELISTED && !isRiskyPageContext()) return;
+    if (WHITELISTED) return;
 
     PROCESSING.set(video, key);
     // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
     const contextText = collectContext(video, poster);
-    if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) {
+    if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText) || PAGE_RISKY) {
       scheduleVideoBurst(video);
     }
-    if (local.suspicious || hasSoftMediaRisk(contextText)) {
+    if (local.suspicious || hasSoftMediaRisk(contextText) || PAGE_RISKY) {
       setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, false); }, 250);
     }
     if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
       enqueue(async () => {
+        if (!canCallCloud()) return;
         const { block, reason } = await firstBlockingAnalysis(
           analysisUrlsForElement(video, poster),
           shouldFailClosed(video, local, true),
           !YOUTUBE_AGGRESSIVE_MODE,
         );
         if (block) shieldElement(video, reason, "cloud");
-        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
+        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText) || PAGE_RISKY) scheduleVideoBurst(video);
       });
     } else {
       enqueue(() => captureFrame(video, false));
     }
     // continuous scan disabled; only suspicious visible/new videos are sampled once/burst
     video.addEventListener("playing", () => {
-      if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
+      if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText) || PAGE_RISKY) scheduleVideoBurst(video);
     });
     // continuous scan listener disabled
     video.addEventListener("pause", () => stopContinuousVideoScan(video));

@@ -1,184 +1,187 @@
-// =============================================================================
-// analyze-image — strict youth-protection image moderation.
-// Browser-side NSFWJS still supplies local probabilities, then this endpoint
-// applies URL/context heuristics plus a strict vision review for children's
-// browsing where mainstream revealing/suggestive images must be blocked.
-// =============================================================================
+// Supabase Edge Function: analyze-image
+// Bu faylni: supabase/functions/analyze-image/index.ts ga qo'ying
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { runGate } from "../_shared/moderation/gate.ts";
-import { hashContent, getCached, setCached } from "../_shared/moderation/memory.ts";
-import { buildLocalImageAnalysis, analyzeUrlLocal } from "../_shared/moderation/local-engine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const geminiPrompt = `You are a strict content safety filter for a web browser 
-used by children under 13. Analyze this image carefully.
-Return {"should_block": true} if the image shows ANY of these:
+// ========== GEMINI PROMPT (YOUTH PROTECTION) ==========
+const YOUTH_PROTECTION_PROMPT = `You are a strict content safety filter for a web browser used exclusively by children under 13 years old.
+
+Analyze the provided image and return {"should_block": true} if the image shows ANY of the following:
 - A person wearing a bikini, swimsuit, or bathing suit
 - Significant exposed skin: bare midriff, cleavage, bare thighs, or buttocks
 - Lingerie, underwear, or sleepwear being worn
 - A person in a suggestive, sexualized, or provocative pose
-- Tight/revealing clothing that exposes the body in a sexual way  
-- Music video thumbnails with dancers in revealing outfits
-- Any romantic or sexual activity between people
-- Shirtless men/women posed in a sexualized way
-Return {"should_block": false} ONLY for clearly safe content:
-- Sports where players wear uniforms (football, basketball, etc.)
-- News, educational, or documentary content
-- Food, nature, landscapes, buildings
-- People in regular street clothes (fully covered)
-- Children's cartoons or animations
-- Professional/business settings
-Critical rule: When uncertain, ALWAYS return {"should_block": true}.
-This filter protects real children. Missing harmful content is unacceptable.
-Respond ONLY with valid JSON: {"should_block": true} or {"should_block": false}`;
+- Tight/revealing clothing that exposes the body in a sexual way
+- Music video thumbnails with dancers or performers in revealing outfits
+- Romantic or sexual activity between people
+- Shirtless men or women posed in a sexualized way
+- Any content a primary school (K-6) teacher would consider inappropriate
+- Partial nudity, even if artistic or non-explicit
 
-function extractJsonObject(text: string): Record<string, unknown> | null {
-  try { return JSON.parse(text); } catch {}
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]); } catch { return null; }
-}
+Return {"should_block": false} ONLY for clearly safe content such as:
+- Sports action shots where players wear standard uniforms (football, basketball, tennis, etc.)
+- News, documentary, or educational images
+- Food, nature, landscapes, buildings, or objects
+- People wearing regular everyday street clothing (fully covered)
+- Children's cartoons or animations (non-sexualized)
+- Professional or business settings
+- Historical or scientific educational content
 
-async function runStrictVisionReview(imageUrl?: string, imageBase64?: string) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) return null;
-  const imagePart = imageBase64
-    ? { type: "image_url", image_url: { url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}` } }
-    : { type: "image_url", image_url: { url: imageUrl } };
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Lovable-API-Key": apiKey,
-      "X-Lovable-AIG-SDK": "edge-fetch",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      temperature: 0,
-      messages: [{ role: "user", content: [{ type: "text", text: geminiPrompt }, imagePart] }],
-    }),
-  });
-  if (res.status === 402 || res.status === 429) return { quotaStatus: res.status };
-  if (!res.ok) throw new Error(`Vision review failed: HTTP ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content || "";
-  const parsed = extractJsonObject(String(text));
-  return { shouldBlock: parsed?.should_block === true };
-}
+CRITICAL RULES:
+1. When uncertain, ALWAYS return {"should_block": true}
+2. Do NOT consider whether content is "mainstream" or "commercially published" — a bikini is a bikini regardless of whether it appears in a music video
+3. This filter protects real children. False positives (over-blocking) are acceptable. False negatives (missing harmful content) are NOT acceptable.
+
+Respond ONLY with valid JSON. No explanation, no markdown, no extra text.
+Examples: {"should_block": true} or {"should_block": false}`;
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
     const body = await req.json();
-    const {
-      image_url, image_base64,
-      caption, alt, title, page_url,
-      nsfw_probs,                                  // { porn, hentai, sexy, neutral, drawing }
-      language = "en",
-      youth_protection = false,
-    } = body || {};
+    const { image_url, image_base64, fast, language, youth_protection } = body;
 
-    if (!image_url && !image_base64) {
-      return new Response(JSON.stringify({ error: "image_url or image_base64 is required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const captionText = [caption, alt, title].filter(Boolean).join(" | ");
-    const contentHash = await hashContent(`image:${image_url ?? image_base64?.slice(0, 256) ?? ""}|${captionText}|yp:${youth_protection ? 1 : 0}|strict-youth-vision-v1`);
-
-    const cached = getCached(contentHash);
-    if (cached) {
-      return new Response(JSON.stringify({ ...cached, _provider: "cache" }), {
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      return new Response(JSON.stringify({ error: "Gemini API key not configured" }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Youth protection mode: tighten NSFW thresholds before scoring
-    let effectiveNsfw = nsfw_probs;
-    if (youth_protection && nsfw_probs) {
-      effectiveNsfw = {
-        porn:    Math.min(1, (nsfw_probs.porn    ?? 0) * 1.6),
-        hentai:  Math.min(1, (nsfw_probs.hentai  ?? 0) * 1.6),
-        sexy:    Math.min(1, (nsfw_probs.sexy    ?? 0) * 1.8),
-        neutral: nsfw_probs.neutral,
-        drawing: nsfw_probs.drawing,
+    // Har doim youth_protection prompt ishlatiladi (bu faqat bolalar brauzeri)
+    const systemPrompt = YOUTH_PROTECTION_PROMPT;
+
+    // Gemini model tanlash: fast=true bo'lsa flash, aks holda pro
+    const model = fast ? "gemini-1.5-flash" : "gemini-1.5-pro";
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+    // Rasm qismini tayyorlash
+    let imagePart;
+    if (image_base64) {
+      // Base64 rasm
+      const mediaType = image_base64.startsWith("/9j/") ? "image/jpeg" : "image/png";
+      imagePart = {
+        inlineData: {
+          mimeType: mediaType,
+          data: image_base64,
+        },
       };
-    }
-
-    let analysis = buildLocalImageAnalysis({
-      url: image_url, caption: captionText, pageUrl: page_url, nsfw_probs: effectiveNsfw,
-    });
-
-    const strictVision = await runStrictVisionReview(image_url, image_base64);
-    if (strictVision?.quotaStatus) {
-      return new Response(JSON.stringify({ error: "AI quota temporarily unavailable", should_block: false }), {
-        status: strictVision.quotaStatus, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    } else if (image_url) {
+      // URL orqali rasm
+      try {
+        const imgResp = await fetch(image_url, {
+          headers: { "User-Agent": "Mozilla/5.0 SafeNet-Filter/1.0" },
+        });
+        if (!imgResp.ok) throw new Error(`Image fetch failed: ${imgResp.status}`);
+        const imgBuffer = await imgResp.arrayBuffer();
+        const imgBytes = new Uint8Array(imgBuffer);
+        // base64 ga convert
+        let binary = "";
+        for (let i = 0; i < imgBytes.byteLength; i++) {
+          binary += String.fromCharCode(imgBytes[i]);
+        }
+        const base64Data = btoa(binary);
+        const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+        imagePart = {
+          inlineData: {
+            mimeType: contentType.split(";")[0],
+            data: base64Data,
+          },
+        };
+      } catch {
+        // URL fetch muvaffaqiyatsiz bo'lsa — URL ni to'g'ridan-to'g'ri Gemini ga ber
+        imagePart = {
+          fileData: {
+            mimeType: "image/jpeg",
+            fileUri: image_url,
+          },
+        };
+      }
+    } else {
+      return new Response(JSON.stringify({ should_block: false, error: "No image provided" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (strictVision?.shouldBlock) {
-      analysis.should_block = true;
-      analysis.confidence = Math.max(analysis.confidence ?? 0, 0.95);
-      analysis.description = "Strict youth-protection vision review flagged revealing or suggestive content";
-      analysis.scene_type = "adult";
-      analysis.harmful_content.is_harmful = true;
-      analysis.harmful_content.severity = "high";
-      analysis.harmful_content.categories = [...(analysis.harmful_content.categories || []), "adult", "youth-protection"];
-      analysis.harmful_content.details = "strict youth-protection visual block";
-      analysis.block_reason = "Youth protection: revealing/suggestive visual content";
+
+    const geminiBody = {
+      contents: [
+        {
+          parts: [
+            { text: systemPrompt },
+            imagePart,
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 50,
+        responseMimeType: "application/json",
+      },
+    };
+
+    const geminiResp = await fetch(geminiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiBody),
+    });
+
+    if (geminiResp.status === 429) {
+      return new Response(JSON.stringify({ error: "rate_limit" }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Hard URL block override (unsafe domain)
-    const urlLocal = analyzeUrlLocal(image_url);
-    if (urlLocal.shouldBlock && urlLocal.confidence >= 0.9) {
-      analysis.should_block = true;
-      analysis.harmful_content.is_harmful = true;
-      analysis.harmful_content.severity = "high";
-      analysis.block_reason = `Unsafe domain: ${urlLocal.signals.join(", ")}`;
+    if (!geminiResp.ok) {
+      const errText = await geminiResp.text();
+      console.error("Gemini error:", errText);
+      return new Response(JSON.stringify({ should_block: false, error: "Gemini API error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Youth protection: block on any suggestive signal or moderate NSFW probability
-    if (youth_protection && !analysis.should_block) {
-      const p = nsfw_probs || {};
-      const ypBlock =
-        (p.porn   ?? 0) >= 0.30 ||
-        (p.hentai ?? 0) >= 0.30 ||
-        (p.sexy   ?? 0) >= 0.40 ||
-        (analysis.nsfw_probability ?? 0) >= 0.45;
-      if (ypBlock) {
-        analysis.should_block = true;
-        analysis.harmful_content.is_harmful = true;
-        analysis.harmful_content.severity = analysis.harmful_content.severity || "high";
-        analysis.harmful_content.categories = [...(analysis.harmful_content.categories || []), "youth-protection"];
-        analysis.block_reason = analysis.block_reason || "Youth protection: suggestive/revealing content blocked for under-13 browser";
+    const geminiData = await geminiResp.json();
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+    let result = { should_block: false };
+    try {
+      const cleaned = rawText.replace(/```json|```/g, "").trim();
+      result = JSON.parse(cleaned);
+    } catch {
+      // Agar JSON parse muvaffaqiyatsiz bo'lsa va "true" so'zi bo'lsa — block
+      if (rawText.toLowerCase().includes("true")) {
+        result = { should_block: true };
       }
     }
 
-
-    const gated = runGate({ analysis, kind: "image", contentHash });
-    setCached(contentHash, gated.analysis);
-
-    return new Response(JSON.stringify({
-      ...gated.analysis,
-      _provider: "local-engine",
-      _decision: {
-        id: contentHash,
-        verdict: gated.verdict,
-        category: gated.category,
-        confidence: gated.confidence,
-        threshold: gated.threshold,
-        reasoning: gated.reasoning,
-      },
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    console.error("analyze-image error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error", should_block: false }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        should_block: !!result.should_block,
+        block_reason: result.should_block ? (result.reason || "Youth protection filter") : "",
+        category: result.category || "",
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  } catch (err) {
+    console.error("Edge function error:", err);
+    return new Response(
+      JSON.stringify({ should_block: false, error: String(err) }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
 });
