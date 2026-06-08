@@ -1,1173 +1,533 @@
 /**
- * AI Radar — Monitor Script v6
- * 3 qatlamli himoya:
- *   1. Whitelist/Blacklist (0ms, lokal)
- *   2. Lokal heuristics: skin-tone + URL/keyword (lokal, tekin)
- *   3. Cloud AI (faqat shubhali, kvota-cheklangan)
+ * AI Radar — Monitor v8.0  (Clean Architecture)
+ *
+ * GOLDEN RULE: 100% airtight blocking of harmful media — ZERO friction on safe content.
+ *
+ * Architecture principles (DO NOT REGRESS):
+ *  1. Non-Destructive Interception
+ *     - NEVER mutate <video>.src / .currentSrc / call .load() / strip attrs.
+ *     - NEVER inject blur/cursor/pointer-events styles onto generic containers
+ *       (a, button, [role=link], parent divs). Only the confirmed-bad media
+ *       element itself or its dedicated overlay layer.
+ *  2. Overlay-Only Blocking
+ *     - When a media item is CONFIRMED harmful, we hide it visually AND drop
+ *       an isolated absolutely-positioned overlay over its bounding box that
+ *       captures pointer events (cursor:not-allowed, click swallowed).
+ *     - Until that confirmation arrives, the element behaves 100% normally.
+ *  3. Domain-Agnostic Observer
+ *     - MutationObserver watches the whole document for IMG / VIDEO / SOURCE
+ *       universally. No hardcoded YouTube/Insta selectors leak styles.
+ *  4. Heuristic De-bias (sports / racing / leather suits)
+ *     - Motion + non-flesh palette → toxicity score sharply reduced.
+ *     - Local NSFW only fires hard-block when density ≥ 0.82.
+ *  5. Cloud only on ambiguous (rate-limited). Cloud failure never blocks safe.
+ *
+ * Contracts preserved from prior versions:
+ *  - postMessage IPC with nsfw-loader.js  ({__aiRadar:"classify"|"result"})
+ *  - chrome.runtime "fetch-image" with background.js for CORS-bypassed bytes
+ *  - chrome.storage.local stats keys consumed by popup.js
  */
 (function () {
   "use strict";
   if (window.__AI_RADAR_LOADED__) return;
   window.__AI_RADAR_LOADED__ = true;
 
-
-  function injectCoreStyles() {
+  // ───────────────────────────── Styles ─────────────────────────────
+  // CRITICAL: no global rule touches generic elements. Only our own classes
+  // attached to specific overlay/media nodes we created or confirmed.
+  (function injectStyles() {
     if (document.getElementById("ai-radar-core-style")) return;
     const css = document.createElement("style");
     css.id = "ai-radar-core-style";
     css.textContent = `
-.ai-radar-blocked{pointer-events:none!important;user-select:none!important}.safe-blur{filter:blur(25px)!important;transition:filter .5s ease!important;cursor:pointer!important;pointer-events:auto!important}.safe-blur.safe-blur-revealed{filter:none!important}.ai-radar-wrapper{position:relative!important;display:inline-block!important;vertical-align:middle;background:#0a0f1c;border-radius:6px;overflow:hidden}.ai-radar-shield{position:absolute!important;inset:0!important;background:rgba(10,15,28,.98);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:10px;z-index:2147483647;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 20px rgba(239,68,68,.3);pointer-events:auto!important;cursor:not-allowed!important;user-select:none;overflow:hidden}.ai-radar-shield .icon{font-size:26px;margin-bottom:4px}.ai-radar-shield .title{font-weight:700;color:#fca5a5;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}.ai-radar-shield .reason{opacity:.85;font-size:10px;max-width:90%;line-height:1.3}.ai-radar-preblocked-container{pointer-events:auto!important;user-select:auto!important}.ai-radar-youtube-hidden-card{display:revert!important;visibility:visible!important;pointer-events:auto!important}.ai-radar-pre-shield{position:absolute!important;inset:0!important;z-index:2147483646!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:40px;background:transparent!important;color:rgba(103,232,249,.55)!important;border:1px dashed rgba(103,232,249,.25)!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:10px!important;text-align:center!important;pointer-events:none!important;cursor:default!important;opacity:.5}.ai-radar-pre-shield--active{background:rgba(10,15,28,.96)!important;color:#fca5a5!important;border:2px solid #ef4444!important;pointer-events:auto!important;cursor:not-allowed!important;opacity:1!important}.ai-radar-pre-shield--compact{inset:8px!important;min-height:32px!important;border-radius:6px!important;background:transparent!important}.ai-radar-scanning{outline:2px dashed rgba(34,211,238,.6)!important;outline-offset:-2px!important}`;
+.ai-radar-hidden-media{visibility:hidden!important}
+.ai-radar-overlay{position:absolute;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,15,28,.97);color:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;text-align:center;padding:8px;border:2px solid #ef4444;border-radius:6px;box-shadow:0 0 0 1px rgba(239,68,68,.4),0 0 18px rgba(239,68,68,.3);pointer-events:auto;cursor:not-allowed;user-select:none;overflow:hidden}
+.ai-radar-overlay .ico{font-size:22px;margin-bottom:2px}
+.ai-radar-overlay .ttl{font-weight:700;color:#fca5a5;text-transform:uppercase;letter-spacing:1px;font-size:11px}
+.ai-radar-overlay .rsn{opacity:.8;font-size:10px;max-width:92%;line-height:1.25;margin-top:2px}
+.ai-radar-overlay .ico{font-size:18px}
+@media(max-width:480px){.ai-radar-overlay .rsn{display:none}.ai-radar-overlay .ttl{font-size:10px}}
+`;
     (document.head || document.documentElement).appendChild(css);
-  }
-  injectCoreStyles();
+  })();
 
+  // ───────────────────────────── Config ─────────────────────────────
   const API_BASE = "https://czxxfudupcikdomidbjl.supabase.co/functions/v1";
   const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eHhmdWR1cGNpa2RvbWlkYmpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzY2MDMsImV4cCI6MjA5NTY1MjYwM30.gWbO-U6srz-WC1DLUGkGGOpe2iB8kSCgpPgXJ3lrveo";
 
-  const MIN_SIZE = 150; // ikon va avatarlarni o'tkazib yubor
-  const MAX_CONCURRENT = 8;
-  // v10: YouTube card-level hard block + stricter video fail-closed cache.
-  const CACHE_KEY = "__ai_radar_cache_v10__";
-  const PROCESSING = new WeakMap(); // element -> oxirgi tekshirilgan media kaliti
-  const QUEUE = [];
-  let active = 0;
-  let blockedCount = 0;
-  let aiDisabled = false;
-  let cloudCallsThisMinute = 0;
-  let cloudMinuteTimer = null;
-  const CLOUD_RATE_LIMIT = 10; // max 10 calls per minute
-  function canCallCloud() {
-    if (aiDisabled) return false;
-    if (cloudCallsThisMinute >= CLOUD_RATE_LIMIT) return false;
-    cloudCallsThisMinute++;
-    if (!cloudMinuteTimer) {
-      cloudMinuteTimer = setTimeout(() => {
-        cloudCallsThisMinute = 0;
-        cloudMinuteTimer = null;
-      }, 60000);
-    }
-    return true;
-  }
-  function tripAiQuota() {
-    aiDisabled = true;
-    setTimeout(() => {
-      aiDisabled = false;
-      cloudCallsThisMinute = 0;
-      console.log("[AI Radar] AI quota reset — filter re-enabled");
-    }, 5 * 60 * 1000);
-  }
-  let paused = false;
+  const MIN_SIZE = 140;                  // ignore icons / avatars
+  const MAX_CONCURRENT = 6;
+  const LOCAL_BLOCK_THRESHOLD = 0.82;    // hard block only at ≥0.82 density
+  const LOCAL_SUSPECT_THRESHOLD = 0.55;  // ambiguous → cloud check
+  const CLOUD_RATE_LIMIT = 35;
+  const CACHE_TTL_MS = 30 * 60 * 1000;
 
-  // Persisted stats (chrome.storage.local)
-  const stats = { totalBlocked: 0, localBlocked: 0, cloudBlocked: 0, localApproved: 0 };
+  // Domains where we never run (extension UI, internal)
+  if (/^(chrome|edge|about|moz-extension|chrome-extension)/.test(location.protocol)) return;
+
+  // Whitelist hosts — no scanning at all
+  const HARD_WHITELIST = new Set([
+    "wikipedia.org", "github.com", "stackoverflow.com",
+    "google.com/search", "developer.mozilla.org",
+  ]);
+
+  // ───────────────────────────── State ──────────────────────────────
+  const STATE = {
+    paused: false,
+    aiQuotaTripped: false,
+    cloudCallsThisMinute: 0,
+    cloudResetTimer: null,
+    active: 0,
+    queue: [],
+    /** @type {Map<string,{verdict:"safe"|"bad"|"unknown",ts:number,reason?:string}>} */
+    verdictCache: new Map(),
+    /** @type {WeakMap<Element,{state:"pending"|"safe"|"bad",key:string}>} */
+    elState: new WeakMap(),
+    /** @type {WeakMap<Element,{overlay:HTMLElement,target:Element,raf:number}>} */
+    overlays: new WeakMap(),
+    nsfwReady: false,
+    nsfwReqId: 0,
+    nsfwPending: new Map(),
+    stats: { totalBlocked: 0, localBlocked: 0, cloudBlocked: 0, localApproved: 0 },
+  };
+
+  // Load persisted state
   try {
-    chrome.storage?.local?.get?.(["totalBlocked","localBlocked","cloudBlocked","localApproved","paused"], (s) => {
-      if (!s) return;
-      stats.totalBlocked = s.totalBlocked || 0;
-      stats.localBlocked = s.localBlocked || 0;
-      stats.cloudBlocked = s.cloudBlocked || 0;
-      stats.localApproved = s.localApproved || 0;
-      paused = !!s.paused;
-      blockedCount = stats.totalBlocked;
-    });
-    chrome.storage?.onChanged?.addListener?.((changes, area) => {
-      if (area === "local" && changes.paused) paused = !!changes.paused.newValue;
+    chrome.storage?.local?.get?.(
+      ["totalBlocked", "localBlocked", "cloudBlocked", "localApproved", "paused"],
+      (s) => {
+        if (!s) return;
+        STATE.stats.totalBlocked = s.totalBlocked || 0;
+        STATE.stats.localBlocked = s.localBlocked || 0;
+        STATE.stats.cloudBlocked = s.cloudBlocked || 0;
+        STATE.stats.localApproved = s.localApproved || 0;
+        STATE.paused = !!s.paused;
+      }
+    );
+    chrome.storage?.onChanged?.addListener?.((c, area) => {
+      if (area === "local" && c.paused) STATE.paused = !!c.paused.newValue;
     });
   } catch {}
 
   function persistStats(extra = {}) {
-    try { chrome.storage?.local?.set?.({ ...stats, ...extra }); } catch {}
+    try { chrome.storage?.local?.set?.({ ...STATE.stats, ...extra }); } catch {}
   }
-  function noteLocalApproved() { stats.localApproved++; persistStats(); }
 
-  // ========== NSFW LOKAL MODEL (page-context'ga inject) ==========
-  let nsfwReady = false;
-  let nsfwReqId = 0;
-  const nsfwPending = new Map();
-  const MONITOR_ASSET_BASE = window.AI_RADAR_ASSET_BASE || (() => {
-    try { return new URL("./extension/", document.currentScript?.src || "https://huggy-heart-bloom.lovable.app/monitor.js").href; }
-    catch { return "https://huggy-heart-bloom.lovable.app/extension/"; }
-  })();
-  function injectNsfwLoader() {
+  function recordBlock(kind, reason) {
+    STATE.stats.totalBlocked++;
+    if (kind === "local") STATE.stats.localBlocked++;
+    else if (kind === "cloud") STATE.stats.cloudBlocked++;
+    persistStats({ lastBlock: { reason, host: location.hostname, ts: Date.now() } });
+  }
+
+  // ─────────────────────────── NSFW IPC ─────────────────────────────
+  (function injectNsfwLoader() {
     try {
-      const url = (typeof chrome !== "undefined" && chrome.runtime?.getURL?.("nsfw-loader.js")) || (MONITOR_ASSET_BASE + "nsfw-loader.js");
+      const url = chrome.runtime?.getURL?.("nsfw-loader.js");
+      if (!url) return;
       const s = document.createElement("script");
       s.src = url;
-      s.crossOrigin = "anonymous";
       s.onload = () => s.remove();
       (document.head || document.documentElement).appendChild(s);
     } catch {}
-  }
-  injectNsfwLoader();
+  })();
+
+  window.addEventListener("ai-radar-nsfw-ready", () => { STATE.nsfwReady = true; });
   window.addEventListener("message", (ev) => {
-    if (!ev.data || ev.source !== window) return;
-    const m = ev.data;
-    if (m.__aiRadar === "result") {
-      const cb = nsfwPending.get(m.id);
-      if (cb) { nsfwPending.delete(m.id); cb(m); }
-    }
+    if (ev.source !== window || !ev.data || ev.data.__aiRadar !== "result") return;
+    const cb = STATE.nsfwPending.get(ev.data.id);
+    if (cb) { STATE.nsfwPending.delete(ev.data.id); cb(ev.data); }
   });
-  window.addEventListener("ai-radar-nsfw-ready", () => { nsfwReady = true; });
-  function classifyLocal(src, timeoutMs = 7000) {
+
+  function classifyLocal(src, timeoutMs = 6000) {
     return new Promise((resolve) => {
-      const id = ++nsfwReqId;
-      const timer = setTimeout(() => { nsfwPending.delete(id); resolve({ error: "timeout" }); }, timeoutMs);
-      nsfwPending.set(id, (m) => { clearTimeout(timer); resolve(m); });
+      if (!STATE.nsfwReady) return resolve({ error: "not-ready" });
+      const id = ++STATE.nsfwReqId;
+      const t = setTimeout(() => {
+        STATE.nsfwPending.delete(id);
+        resolve({ error: "timeout" });
+      }, timeoutMs);
+      STATE.nsfwPending.set(id, (m) => { clearTimeout(t); resolve(m); });
       window.postMessage({ __aiRadar: "classify", id, src }, "*");
     });
   }
-  function fetchImageViaBackground(url) {
-    return new Promise((resolve) => {
-      try {
-        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-          chrome.runtime.sendMessage({ type: "fetch-image", url }, (resp) => {
-            if (chrome.runtime?.lastError) return resolve(null);
-            if (resp?.ok) resolve(resp.dataUrl); else resolve(null);
-          });
-          return;
-        }
-        fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" })
-          .then((res) => res.ok ? res.blob() : null)
-          .then((blob) => {
-            if (!blob || blob.size > 5_000_000) return resolve(null);
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => resolve(null);
-            reader.readAsDataURL(blob);
-          })
-          .catch(() => resolve(null));
-      } catch { resolve(null); }
-    });
-  }
-  // Avval to'g'ridan-to'g'ri, bo'lmasa background fetch (CORS bypass)
-  async function classifyRobust(url, timeoutMs = 7000) {
-    let r = await classifyLocal(url, timeoutMs);
-    if (r && r.preds) return r;
-    if (!url.startsWith("data:")) {
-      const dataUrl = await fetchImageViaBackground(url);
-      if (dataUrl) {
-        r = await classifyLocal(dataUrl, timeoutMs);
-        if (r && r.preds) return { ...r, dataUrl };
-      }
-    }
-    return r;
-  }
-  function hostMatches(domains) {
-    const host = location.hostname.toLowerCase().replace(/^www\./, "");
-    return domains.some((d) => host === d || host.endsWith("." + d));
-  }
-  // VISUAL_RISK_DOMAINS — preShield endi click-through (pointer-events:none) va shaffof bo'lgani uchun
-  // YouTube ham xavfsiz tarzda qo'shilgan. Faqat haqiqiy block bo'lganda ai-radar-shield faollashadi.
-  const VISUAL_RISK_DOMAINS = [
-    "instagram.com", "pinterest.com", "tiktok.com", "youtube.com", "youtu.be",
-    "x.com", "twitter.com", "reddit.com", "threads.net", "snapchat.com",
-  ];
-  const VISUAL_RISK_HOST = hostMatches(VISUAL_RISK_DOMAINS);
-  const YOUTUBE_HOST = hostMatches(["youtube.com", "youtu.be"]);
-  const YOUTUBE_AGGRESSIVE_MODE = false;
-  const VIDEO_SCAN_TIMERS = new WeakMap();
-  const BLOCKED_YOUTUBE_IDS = new Set();
-  try { JSON.parse(localStorage.getItem("__ai_radar_blocked_yt_ids__") || "[]").forEach((id) => BLOCKED_YOUTUBE_IDS.add(id)); } catch {}
 
-  function installVisualRiskPrehide() {
-    // Check-then-Block: do NOT pre-blur or pre-shield media. AI analyzes in background;
-    // only confirmed risky content gets blocked. Videos/images load clean by default.
-    return;
-  }
-  // intentionally not invoked
+  // ─────────────────────────── URL hints ────────────────────────────
+  const URL_HARD = /\b(porn|xxx|hentai|nsfw|sex(?:y|cam|chat)?|nude|naked|nudes|bikini|lingerie|onlyfans|cam(?:girl|whore)|escort)\b/i;
+  const URL_SOFT = /\b(bra|thong|panties|booty|cleavage|underwear|swimsuit)\b/i;
+  // Sports/safe vocab — overrides soft hints
+  const URL_SAFE = /\b(motogp|formula1|f1|nascar|race|racing|football|soccer|basketball|cricket|tennis|olympic|highlight|tutorial|education|news|documentary|recipe|wikipedia)\b/i;
 
-  // Lokal NSFW model: strict rejimda Sexy signallar ham hisobga olinadi.
-  function decideFromNsfw(preds, strict = false) {
-    if (!preds) return null;
-    const porn   = preds.Porn   || 0;
-    const hentai = preds.Hentai || 0;
-    const sexy   = preds.Sexy   || 0;
-    if (strict) {
-      if (porn > 0.65 || hentai > 0.65) {
-        return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score: Math.max(porn, hentai) };
-      }
-      if (sexy > 0.70) {
-        return { block: true, reason: "Jinsiy kontent", confident: true, score: sexy };
-      }
-      if (sexy > 0.50) {
-        return { block: false, suspicious: true, confident: false, score: sexy };
-      }
-    } else {
-      if (porn > 0.85 || hentai > 0.85) {
-        return { block: true, reason: hentai > porn ? "Hentai" : "Behayo kontent", confident: true, score: Math.max(porn, hentai) };
-      }
-      if (porn > 0.60 || hentai > 0.60) {
-        return { block: false, suspicious: true, confident: false, score: Math.max(porn, hentai) };
-      }
-    }
-    const score = Math.max(porn, hentai, sexy);
-    return { block: false, confident: score < 0.25, score };
+  function urlSignal(u) {
+    if (!u) return 0;
+    const s = u.toLowerCase();
+    if (URL_SAFE.test(s)) return -0.4;
+    if (URL_HARD.test(s)) return 0.9;
+    if (URL_SOFT.test(s)) return 0.5;
+    return 0;
   }
 
-  // ========== CACHE (localStorage, 7 kun) ==========
-  let CACHE = {};
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const now = Date.now();
-      for (const k in parsed) {
-        if (parsed[k].t && now - parsed[k].t < 7 * 24 * 3600 * 1000) {
-          CACHE[k] = parsed[k];
-        }
-      }
-    }
-  } catch {}
-  let cacheDirty = false;
-  function saveCache() {
-    if (!cacheDirty) return;
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(CACHE)); cacheDirty = false; } catch {}
-  }
-  setInterval(saveCache, 5000);
-
-  function urlHash(url) {
-    let h = 0;
-    for (let i = 0; i < url.length; i++) h = ((h << 5) - h + url.charCodeAt(i)) | 0;
-    return "u" + (h >>> 0).toString(36);
+  function contextText(el) {
+    const bits = [el.alt, el.title, el.getAttribute?.("aria-label")];
+    const link = el.closest?.("a");
+    if (link) bits.push(link.title, link.getAttribute("aria-label"));
+    return bits.filter(Boolean).join(" ").toLowerCase();
   }
 
-  // ========== WHITELIST DOMAINS (AI'siz o'tkaz) ==========
-  const WHITELIST_DOMAINS = [
-    "wikipedia.org","wikimedia.org","github.com","stackoverflow.com","stackexchange.com",
-    "google.com","gmail.com","drive.google.com","docs.google.com","calendar.google.com",
-    "khanacademy.org","coursera.org","edx.org","udemy.com",
-    "mit.edu","stanford.edu","harvard.edu","mdn.mozilla.org","developer.mozilla.org",
-    "npmjs.com","nodejs.org","python.org","reactjs.org","react.dev","vuejs.org",
-    "openai.com","anthropic.com","huggingface.co","kaggle.com","arxiv.org",
-    "nytimes.com","bbc.com","bbc.co.uk","reuters.com","apnews.com","bloomberg.com",
-    "amazon.com","ebay.com","aliexpress.com","etsy.com",
-    "linkedin.com","medium.com","substack.com",
-    "supabase.com","vercel.com","netlify.com","cloudflare.com","aws.amazon.com",
-  ];
-  // Foydalanuvchi qo'shgan whitelist (popup'dan)
-  let USER_WHITELIST = [];
-  try {
-    chrome.storage?.local?.get?.(["userWhitelist"], (s) => {
-      if (Array.isArray(s?.userWhitelist)) USER_WHITELIST = s.userWhitelist;
-    });
-    chrome.storage?.onChanged?.addListener?.((c, area) => {
-      if (area === "local" && c.userWhitelist) {
-        USER_WHITELIST = Array.isArray(c.userWhitelist.newValue) ? c.userWhitelist.newValue : [];
-      }
-    });
-  } catch {}
-
-  function isWhitelisted() {
-    const host = location.hostname.toLowerCase();
-    const user = USER_WHITELIST.map((d) => String(d).toLowerCase());
-    if (user.some((d) => host === d || host.endsWith("." + d))) return true;
-    if (VISUAL_RISK_HOST) return false;
-    return WHITELIST_DOMAINS.some((d) => host === d || host.endsWith("." + d));
-  }
-  let WHITELISTED = isWhitelisted();
-  // Re-evaluate whitelist when user changes it
-  setInterval(() => { WHITELISTED = isWhitelisted(); }, 5000);
-
-  // ========== BLACKLIST (darhol blok) ==========
-  const BLOCKED_DOMAINS = [
-    "pornhub.com","xvideos.com","xhamster.com","redtube.com","youporn.com","spankbang.com",
-    "onlyfans.com","chaturbate.com","stripchat.com","livejasmin.com","brazzers.com",
-    "xnxx.com","tube8.com","beeg.com","tnaflix.com","motherless.com","efukt.com",
-    "hentai.com","nhentai.net","e-hentai.org","rule34.xxx","fapdes.com",
-  ];
-  function isBlockedDomain() {
-    const host = location.hostname.toLowerCase();
-    return BLOCKED_DOMAINS.some((d) => host === d || host.endsWith("." + d));
-  }
-
-  // ========== KEYWORDS / URL PATTERNS ==========
-  const RISKY_KEYWORDS = [
-    "porn","porno","xxx","sex","sexy","nude","nudity","naked","nsfw","erotic","erotica","adult",
-    "fetish","onlyfans","boobs","tits","nipple","pussy","vagina","penis","dick","cock",
-    "bikini","lingerie","thong","swimsuit","seethrough","topless","cameltoe","upskirt",
-    "downblouse","cleavage","milf","hentai","camgirl","escort","stripper","twerk","grinding",
-    "masturbat","orgasm","thirst trap","thirst-trap","ahegao","gore","behead","decapitat",
-    "suicide","selfharm","self-harm","cocaine","heroin","meth",
-    "порно","секс","эрот","голая","голый","обнаж","сиськи","соски","писька","член",
-    "купальник","нижнее белье","трусы","стринги","топлесс","декольте","шлюха","проститут",
-    "эскорт","стриптиз","мастурб","оргазм","анал","минет","самоубий","наркотик",
-    "behayo","yalang'och","yalangoch","ichki kiyim","kupalnik","fohisha","jinsi a'zo",
-  ];
-  const META_BLOCK_KEYWORDS = [
-    "porn","porno","xxx","nsfw","nude","naked","nudity","topless","onlyfans","hentai",
-    "sex tape","sex scene","sexual","stripper","strip club","camgirl","escort","fetish",
-    "boobs","tits","nipple","pussy","vagina","penis","dick","cock","masturbat","orgasm",
-    "blowjob","anal","cum","gore","behead","bloodbath","suicide","self-harm","cocaine","heroin","meth",
-    "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм",
-    "yalang'och","yalangoch","behayo","jinsi a'zo","porno","fohisha"
-  ];
-  const META_SUSPECT_KEYWORDS = [
-    "lingerie","thong","bikini","swimsuit","cleavage","twerk","grinding","seductive","sexy",
-    "thirst trap","thirst-trap","micro skirt","see through","see-through","bodycon",
-    "booty shorts","short skirt","cosplay","ahegao","upskirt","cameltoe",
-    "naughty","naughty girl","hot girl","sexy girl",
-    "купальник","нижнее белье","стринги","декольте","эрот","облегающ",
-    "kupalnik","ichki kiyim","tor kiyim","ochiq kiyim","ko'krak","kokrak"
-  ];
-  const SITE_CONTAINER_SELECTORS = [
-    "ytd-rich-item-renderer", "ytd-rich-grid-media", "ytd-rich-grid-slim-media",
-    "ytd-video-renderer", "ytd-compact-video-renderer", "ytd-grid-video-renderer",
-    "ytd-reel-item-renderer", "ytd-reel-video-renderer", "ytm-shorts-lockup-view-model",
-    "article", "[data-test-id='pin']", "[data-grid-item]", "[data-visualcompletion]",
-    "[data-testid='cellInnerDiv']", "div[style*='transform']", "ytd-thumbnail",
-    "a", "[role='link']", "[role='button']"
-  ];
-  const RISKY_URL_PATTERNS = [
-    /\/porn/i, /\/xxx/i, /\/nsfw/i, /\/adult/i, /\/sex(?!ton|tan)/i, /\/nude/i, /\/erotic/i,
-    /\/hentai/i, /\/onlyfans/i, /\/cam(girl|boy)/i, /\/bikini/i, /\/lingerie/i,
-    /erotik/i, /erotiqa/i, /bikni/i, /booty/i,
-    /pornhub/i, /xvideos/i, /xhamster/i, /redtube/i, /youporn/i, /spankbang/i,
-    /onlyfans/i, /chaturbate/i, /stripchat/i, /brazzers/i, /xnxx/i,
-    /\/r\/(gonewild|nsfw|porn|nude|hentai)/i,
-  ];
-
-  function normalizeText(v) {
-    try { return decodeURIComponent(String(v || "")).toLowerCase().replace(/\+/g, " "); }
-    catch { return String(v || "").toLowerCase(); }
-  }
-  function pickFromSrcset(srcset) {
-    if (!srcset) return "";
-    const candidates = String(srcset).split(",").map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
-    return candidates[candidates.length - 1] || "";
-  }
-  function mediaUrl(el) {
-    const srcsetUrl = pickFromSrcset(el.srcset || el.getAttribute?.("srcset"));
-    const attrs = [
-      el.currentSrc, el.src, srcsetUrl,
-      el.getAttribute?.("data-src"), el.getAttribute?.("data-original"),
-      el.getAttribute?.("data-lazy-src"), el.getAttribute?.("data-actualsrc"),
-    ];
-    return attrs.find((u) => u && u !== BLANK_PIXEL) || "";
-  }
-  function extractYouTubeId(text) {
-    const s = String(text || location.href);
-    return s.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)?.[1]
-      || s.match(/[?&]v=([a-zA-Z0-9_-]{6,})/)?.[1]
-      || s.match(/\/shorts\/([a-zA-Z0-9_-]{6,})/)?.[1]
-      || "";
-  }
-  function extractYouTubeIdFromElement(el) {
-    const ctx = [
-      el?.src, el?.currentSrc, el?.href,
-      el?.closest?.("a")?.href,
-      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.querySelector?.("a[href]")?.href,
-      el?.closest?.("ytd-rich-item-renderer,ytd-video-renderer,ytd-reel-item-renderer,ytd-reel-video-renderer,ytd-thumbnail")?.innerHTML?.slice(0, 1200),
-      location.href,
-    ].filter(Boolean).join(" ");
-    return extractYouTubeId(ctx);
-  }
-  function youtubeThumbs(id) {
-    if (!id) return [];
-    return [
-      `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
-      `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-      `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-      `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`,
-      `https://i.ytimg.com/vi_webp/${id}/hqdefault.webp`,
-    ];
-  }
-  function analysisUrlForVideo(video) {
-    const poster = video.poster || "";
-    if (poster && !poster.startsWith("blob:")) return poster;
-    const yt = YOUTUBE_HOST ? extractYouTubeIdFromElement(video) : "";
-    if (yt) return youtubeThumbs(yt)[0];
-    return video.currentSrc || video.src || poster || location.href;
-  }
-  function analysisUrlsForElement(el, primaryUrl) {
-    const urls = [];
-    if (primaryUrl) urls.push(primaryUrl);
-    if (YOUTUBE_HOST) urls.push(...youtubeThumbs(extractYouTubeIdFromElement(el)));
-    return [...new Set(urls.filter(Boolean))];
-  }
-  const EXACT_KWS = new Set(["anal", "cum", "meth", "dick", "cock", "ass", "butt", "gore", "nude", "sex", "tits", "boobs", "hips", "dance", "model", "raqs"]);
-  function checkKeywords(text, keywords) {
-    const t = normalizeText(text);
-    if (!t) return false;
-    for (let i = 0; i < keywords.length; i++) {
-      const kw = keywords[i];
-      if (EXACT_KWS.has(kw)) {
-        const regex = new RegExp(`(?:^|[^\\p{L}])${kw}(?:[^\\p{L}]|$)`, "iu");
-        if (regex.test(t)) return true;
-      } else {
-        if (t.includes(kw)) return true;
-      }
-    }
-    return false;
-  }
-
-  function containsRiskyKeyword(text) {
-    return checkKeywords(text, RISKY_KEYWORDS);
-  }
-  function matchesRiskyUrl(url) {
-    return RISKY_URL_PATTERNS.some((re) => re.test(url));
-  }
-  function collectContext(el, url) {
-    const parts = [
-      el.alt, el.title,
-      el.getAttribute && el.getAttribute("aria-label"),
-      el.closest && el.closest("a")?.textContent?.slice(0, 80),
-      el.closest && el.closest("ytd-rich-item-renderer,ytd-reel-video-renderer,ytd-video-renderer")?.textContent?.slice(0, 200),
-      el.closest && el.closest("[role='link'],[role='button']")?.getAttribute?.("aria-label"),
-      el.closest && el.closest("[role='link'],[role='button']")?.textContent?.slice(0, 120),
-    ];
-    return parts.filter(Boolean).join(" ").slice(0, 600);
-  }
-  function hasMetaBlockRisk(text) {
-    return checkKeywords(text, META_BLOCK_KEYWORDS);
-  }
-  function hasMetaSuspectRisk(text) {
-    return checkKeywords(text, META_SUSPECT_KEYWORDS);
-  }
-  function hasStrongMediaRisk(text) {
-    return checkKeywords(text, [
-      "porn","porno","xxx","nsfw","nude","naked","hentai","onlyfans","boobs","nipple","pussy","penis","cock",
-      "booty","ass","butt nude","naked woman",
-      "topless","upskirt","downblouse","masturbat","orgasm","anal","blowjob","gore","behead","suicide","self-harm",
-      "порно","голая","голый","обнаж","сиськи","соски","член","топлесс","мастурб","оргазм","самоубий",
-      "yalang'och","yalangoch","behayo","jinsi a'zo"
-    ]);
-  }
-  function hasSoftMediaRisk(text) {
-    return checkKeywords(text, ["sexy","erotic","lingerie","thong","cleavage","twerk","grinding","bikini","swimsuit","bodycon","leggings","tight dress","try on","outfit","dance","dancer","female giants","booty","big ass","big butt","erotika","erotik","hot girls","sexy girls","bikni","бикини","купальник","декольте","танец","ichki kiyim","kupalnik","tor kiyim","ochiq kiyim","raqsi","raqs","ko'krak","kokrak"]);
-  }
-  function isRiskyPageContext() {
-    try {
-      const decoded = decodeURIComponent(location.href).toLowerCase();
-      const title = (document.title || "").toLowerCase();
-      const combined = decoded + " " + title;
-      return (
-        RISKY_URL_PATTERNS.some(re => re.test(location.href)) ||
-        hasStrongMediaRisk(combined) ||
-        hasSoftMediaRisk(combined) ||
-        hasMetaSuspectRisk(combined) ||
-        checkKeywords(combined, [
-          "hot girl","sexy girl","bikini","swimsuit","nude","naked",
-          "erotika","erotik","erotic","lingerie","bikni","booty",
-          "ass","ass girl","butt","thong","topless","nsfw"
-        ])
-      );
-    } catch { return false; }
-  }
-  const PAGE_RISKY = isRiskyPageContext();
-  function youtubeCard(el) {
-    if (!YOUTUBE_HOST) return null;
-    return el.closest?.("ytd-rich-item-renderer,ytd-rich-grid-media,ytd-rich-grid-slim-media,ytd-video-renderer,ytd-compact-video-renderer,ytd-grid-video-renderer,ytd-reel-item-renderer,ytm-shorts-lockup-view-model,ytd-reel-video-renderer") || null;
-  }
-  function youtubeVisualBox(el) {
-    return el.closest?.("ytd-thumbnail,yt-image,.ytp-videowall-still,.shortsLockupViewModelHostThumbnailContainer") || el.parentElement || el;
-  }
-  function nearestMediaContainer(el) {
-    const yt = youtubeCard(el);
-    if (yt) return yt;
-    for (const sel of SITE_CONTAINER_SELECTORS) {
-      const found = el.closest?.(sel);
-      if (found) return found;
-    }
-    return el.parentElement || el;
-  }
-  function preShield(el, reason = "Tekshirilmoqda") {
-    if (WHITELISTED || el.dataset.aiRadarBlocked || el.dataset.aiRadarPreShield || el.dataset.aiRadarSafe) return;
-    const r = el.getBoundingClientRect();
-    const min = minSizeFor(el);
-    if ((r.width || el.offsetWidth || 0) < min || (r.height || el.offsetHeight || 0) < min) return;
-    el.dataset.aiRadarPreShield = "1";
-    const box = nearestMediaContainer(el);
-    if (!box || box.dataset.aiRadarPreShieldBox) return;
-    box.dataset.aiRadarPreShieldBox = "1";
-    // pending shield must never disable the original site card
-    const visualBox = YOUTUBE_HOST ? youtubeVisualBox(el) : box;
-    if (getComputedStyle(visualBox).position === "static") visualBox.style.position = "relative";
-    const shield = document.createElement("div");
-    shield.className = YOUTUBE_HOST ? "ai-radar-pre-shield ai-radar-pre-shield--compact" : "ai-radar-pre-shield";
-    shield.textContent = `🛡️ ${reason}`;
-    visualBox.appendChild(shield);
-  }
-  function clearPreShield(el) {
-    try {
-      delete el.dataset.aiRadarPreShield;
-      el.dataset.aiRadarSafe = "1";
-      const box = nearestMediaContainer(el);
-      box?.querySelectorAll?.(".ai-radar-pre-shield").forEach((n) => n.remove());
-      box?.classList?.remove("ai-radar-preblocked-container");
-      if (box?.dataset) delete box.dataset.aiRadarPreShieldBox;
-    } catch {}
-  }
-  function localBlockDecision(el, url) {
-    // Partner Mode: meta/page context never blocks by itself; it only decides whether AI should inspect.
-    const mediaText = [url, el.alt, el.title, el.getAttribute && el.getAttribute("aria-label")].filter(Boolean).join(" ");
-    const pageContext = collectContext(el, url);
-    if (matchesRiskyUrl(url) || hasStrongMediaRisk(mediaText)) {
-      return { block: true, reason: "Xavfli media URL/matn" };
-    }
-    if (hasStrongMediaRisk(pageContext) || hasMetaBlockRisk(pageContext) || hasSoftMediaRisk(mediaText) || hasSoftMediaRisk(pageContext) || hasMetaSuspectRisk(pageContext)) {
-      return { block: false, suspicious: true, reason: "Riskli kontekst" };
-    }
-    return { block: false };
-  }
-
-  // ========== Domen blok ==========
-  if (isBlockedDomain()) {
-    const css = document.createElement("style");
-    css.textContent = `.ai-radar-fullpage{position:fixed;inset:0;background:#0f172a;color:#fff;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;padding:32px;text-align:center}.ai-radar-fullpage h1{color:#ef4444;font-size:32px;margin-bottom:12px}`;
-    document.documentElement.appendChild(css);
-    const overlay = document.createElement("div");
-    overlay.className = "ai-radar-fullpage";
-    overlay.innerHTML = `<div style="font-size:64px">🛡️</div><h1>Sayt bloklangan</h1><p>AI Radar bu saytni zararli kontent manbasi sifatida belgilagan.</p>`;
-    document.documentElement.appendChild(overlay);
-    return;
-  }
-
-  // ========== HARD-BLOCK SHIELD (mutlaqo ochib bo'lmaydi) ==========
-  // 1x1 transparent PNG
-  const BLANK_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-  const STOP_EVENTS = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "auxclick", "contextmenu"];
-  function saveBlockedYoutubeIds() {
-    try { localStorage.setItem("__ai_radar_blocked_yt_ids__", JSON.stringify([...BLOCKED_YOUTUBE_IDS].slice(-400))); } catch {}
-  }
-  function rememberBlockedYoutube(el) {
-    if (!YOUTUBE_HOST) return;
-    const id = extractYouTubeIdFromElement(el);
-    if (id) { BLOCKED_YOUTUBE_IDS.add(id); saveBlockedYoutubeIds(); }
-  }
-  function isBlockedYoutubeNavigation(target) {
-    if (!YOUTUBE_HOST) return false;
-    const a = target?.closest?.("a[href]");
-    if (!a) return false;
-    const id = extractYouTubeId(a.href);
-    return !!id && BLOCKED_YOUTUBE_IDS.has(id);
-  }
-  const hardStop = (e) => {
-    const blocked = e.target?.closest?.("[data-ai-radar-blocked-container='1'],.ai-radar-wrapper,.ai-radar-shield,.ai-radar-blocked,.ai-radar-youtube-hidden-card");
-    if (!blocked && !isBlockedYoutubeNavigation(e.target)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    return false;
-  };
-  STOP_EVENTS.forEach((evt) => document.addEventListener(evt, hardStop, { capture: true, passive: false }));
-
-  function neutralizeContainer(el) {
-    rememberBlockedYoutube(el);
-    const selectors = [
-      "ytd-rich-item-renderer", "ytd-rich-grid-media", "ytd-rich-grid-slim-media", "ytd-video-renderer",
-      "ytd-compact-video-renderer", "ytd-grid-video-renderer", "ytd-reel-item-renderer", "ytm-shorts-lockup-view-model",
-      "ytd-reel-video-renderer", "ytd-thumbnail", "a", "[role='link']", "[role='button']", "article",
-      "[data-test-id='pin']", "[data-grid-item]", "div[style*='transform']"
-    ];
-    const targets = new Set([el]);
-    selectors.forEach((sel) => { const t = el.closest?.(sel); if (t) targets.add(t); });
-    targets.forEach((t) => {
-      t.dataset.aiRadarBlockedContainer = "1";
-      t.querySelectorAll?.("a[href]").forEach((a) => {
-        if (a.href) a.dataset.aiRadarOrigHref = a.href;
-        try { a.removeAttribute("href"); } catch {}
-        a.setAttribute("aria-disabled", "true");
-      });
-      if (t.href) { t.dataset.aiRadarOrigHref = t.href; try { t.removeAttribute("href"); } catch {} }
-      if (t.getAttribute?.("role") === "link") t.setAttribute("aria-disabled", "true");
-      try { t.style.cursor = "not-allowed"; } catch {}
-      STOP_EVENTS.forEach((evt) => t.addEventListener(evt, hardStop, { capture: true, passive: false }));
-    });
-  }
-  function collapseYoutubeCard(_el) {
-    // Never remove YouTube cards; harmful media is blurred/shielded in place.
-    return false;
-  }
-
-  function softBlur(el, reason) {
-    if (!el || el.dataset.aiRadarBlocked || el.classList.contains("safe-blur")) return;
-    el.classList.add("safe-blur");
-    el.dataset.aiRadarSoftBlur = reason || "Sherik AI: shubhali";
-    clearPreShield(el);
-    blockedCount++;
-    stats.totalBlocked = blockedCount;
-    stats.localBlocked++;
-    persistStats({ lastBlock: { reason: reason || "soft-blur", host: location.hostname, ts: Date.now() } });
-    try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
-  }
-
-  document.addEventListener("click", (e) => {
-    const t = e.target;
-    if (!t || !t.classList?.contains("safe-blur")) return;
-    e.preventDefault();
-    e.stopPropagation();
-    t.classList.toggle("safe-blur-revealed");
-  }, { capture: true, passive: false });
-
-  function shieldElement(el, reason, source = "local") {
-    if (VISUAL_RISK_HOST && (el.tagName === "IMG" || el.tagName === "VIDEO")) {
-      softBlur(el, reason);
-      return;
-    }
-    if (el.dataset.aiRadarBlocked) return;
-    el.dataset.aiRadarBlocked = "1";
-    clearPreShield(el);
-    const rectBefore = el.getBoundingClientRect();
-    neutralizeContainer(el);
-    const collapsedYoutubeCard = collapseYoutubeCard(el);
-    blockedCount++;
-    stats.totalBlocked = blockedCount;
-    if (source === "cloud") stats.cloudBlocked++;
-    else stats.localBlocked++;
-    const lastBlock = { reason: reason || "", host: location.hostname, ts: Date.now() };
-    // 7-kunlik ring buffer + top hostlar
-    try {
-      chrome.storage?.local?.get?.(["dailyBlocks", "hostBlocks"], (s) => {
-        const today = new Date().toISOString().slice(0, 10);
-        const db = (s.dailyBlocks && typeof s.dailyBlocks === "object") ? { ...s.dailyBlocks } : {};
-        db[today] = (db[today] || 0) + 1;
-        const cutoff = Date.now() - 7 * 86400000;
-        for (const k of Object.keys(db)) {
-          if (new Date(k).getTime() < cutoff) delete db[k];
-        }
-        const hb = (s.hostBlocks && typeof s.hostBlocks === "object") ? { ...s.hostBlocks } : {};
-        const host = location.hostname.replace(/^www\./, "");
-        hb[host] = (hb[host] || 0) + 1;
-        // Faqat top-20 ni saqlash (storage shishmasligi uchun)
-        const trimmed = Object.entries(hb)
-          .sort((a, b) => b[1] - a[1]).slice(0, 20)
-          .reduce((acc, [k, v]) => (acc[k] = v, acc), {});
-        chrome.storage?.local?.set?.({ ...stats, lastBlock, dailyBlocks: db, hostBlocks: trimmed });
-      });
-    } catch {
-      persistStats({ lastBlock });
-    }
-    try { chrome.runtime?.sendMessage?.({ type: "blocked", count: blockedCount }); } catch {}
-    if (collapsedYoutubeCard) return;
-
-    // HARD-REMOVE strategiyasi:
-    // Asl elementni butunlay yashirib, o'rniga shield div qo'yamiz.
-    // Asl element DOM'da qoladi (sayt skripti buzilmasligi uchun) lekin
-    // 0x0 o'lcham, ko'rinmas, click yo'q. Bypass mutlaqo mumkin emas.
-
+  // ─────────────────────────── Eligibility ──────────────────────────
+  function isMediaCandidate(el) {
+    if (!el || !el.isConnected) return false;
     if (el.tagName === "IMG") {
-      try {
-        if (el.src && el.src !== BLANK_PIXEL) el.dataset.aiRadarOrig = el.src;
-        if (el.srcset) { el.dataset.aiRadarSrcset = el.srcset; el.removeAttribute("srcset"); }
-        const picture = el.closest?.("picture");
-        picture?.querySelectorAll?.("source").forEach((s) => {
-          if (s.srcset) s.dataset.aiRadarSrcset = s.srcset;
-          s.removeAttribute("srcset");
-          s.removeAttribute("media");
-        });
-        el.removeAttribute("sizes");
-        el.src = BLANK_PIXEL;
-      } catch {}
-    } else if (el.tagName === "VIDEO") {
-      try {
-        el.pause();
-        el.muted = true;
-        el.removeAttribute("autoplay");
-        el.removeAttribute("controls");
-        if (el.src) { el.dataset.aiRadarOrig = el.src; el.removeAttribute("src"); }
-        el.querySelectorAll("source").forEach((s) => {
-          s.dataset.aiRadarOrig = s.src;
-          s.removeAttribute("src");
-        });
-        el.load();
-        if (el.poster) { el.dataset.aiRadarOrigPoster = el.poster; el.poster = BLANK_PIXEL; }
-      } catch {}
+      const w = el.naturalWidth || el.width || 0;
+      const h = el.naturalHeight || el.height || 0;
+      if (Math.max(w, h) < MIN_SIZE) return false;
+      const src = el.currentSrc || el.src || "";
+      if (!src || src.startsWith("data:image/svg")) return false;
+      return true;
     }
-
-    el.classList.add("ai-radar-blocked");
-    el.setAttribute("aria-hidden", "true");
-
-    STOP_EVENTS.forEach((evt) => {
-      el.addEventListener(evt, hardStop, { capture: true, passive: false });
-    });
-
-    // Parent <a> ni neytrallash
-    const anchor = el.closest && el.closest("a");
-    if (anchor && !anchor.dataset.aiRadarBlockedLink) {
-      anchor.dataset.aiRadarBlockedLink = "1";
-      if (anchor.href) anchor.dataset.aiRadarOrigHref = anchor.href;
-      try { anchor.removeAttribute("href"); } catch {}
-      anchor.style.cursor = "not-allowed";
-      STOP_EVENTS.forEach((evt) => {
-        anchor.addEventListener(evt, hardStop, { capture: true, passive: false });
-      });
+    if (el.tagName === "VIDEO") {
+      const r = el.getBoundingClientRect();
+      if (Math.max(r.width, r.height) < MIN_SIZE) return false;
+      return true;
     }
-
-    // Shield qatlami: asl elementning ustiga, balandroq z-index, click bloki
-    const w = Math.max(rectBefore.width || el.offsetWidth || 200, 80);
-    const h = Math.max(rectBefore.height || el.offsetHeight || 200, 80);
-
-    // Wrapper: position relative, asl o'lchamni saqlab turish
-    const wrapper = document.createElement("div");
-    wrapper.className = "ai-radar-wrapper";
-    Object.assign(wrapper.style, {
-      position: "relative",
-      display: "inline-block",
-      width: w + "px",
-      height: h + "px",
-      overflow: "hidden",
-      verticalAlign: "middle",
-    });
-
-    const shield = document.createElement("div");
-    shield.className = "ai-radar-shield";
-    shield.innerHTML = '<div class="icon">🛡️</div><div class="title">Bloklandi</div><div class="reason"></div>';
-    shield.querySelector(".reason").textContent = (reason || "Zararli kontent").slice(0, 100);
-    Object.assign(shield.style, {
-      position: "absolute",
-      inset: "0",
-      width: "100%",
-      height: "100%",
-    });
-    STOP_EVENTS.forEach((evt) => {
-      shield.addEventListener(evt, hardStop, { capture: true, passive: false });
-    });
-
-    // Asl elementni wrapper ichiga ko'chirib, ustiga shield qo'yamiz
-    try {
-      const parent = el.parentNode;
-      if (parent) {
-        parent.insertBefore(wrapper, el);
-        // Asl elementni absolutely yashirib qo'yamiz (sayt skriptlari uchun)
-        Object.assign(el.style, {
-          position: "absolute",
-          left: "-9999px",
-          top: "-9999px",
-          width: "1px",
-          height: "1px",
-          opacity: "0",
-          visibility: "hidden",
-          pointerEvents: "none",
-        });
-        wrapper.appendChild(el);
-        wrapper.appendChild(shield);
-      }
-    } catch {}
-  }
-
-  // ========== LOKAL HEURISTICS: SKIN-TONE DETECTION ==========
-  // Canvas orqali rasm pikselllarini o'qib, teri rangi foizini hisoblaydi.
-  // Yuqori foiz + katta rasm + risky kontekst → blok.
-  function analyzeSkinToneLocal(img) {
-    return new Promise((resolve) => {
-      try {
-        if (!img.complete || !img.naturalWidth) return resolve({ skinPct: 0, error: true });
-        const canvas = document.createElement("canvas");
-        const W = 64, H = 64;
-        canvas.width = W; canvas.height = H;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        try {
-          ctx.drawImage(img, 0, 0, W, H);
-        } catch {
-          // CORS block — skip
-          return resolve({ skinPct: 0, error: true });
-        }
-        const data = ctx.getImageData(0, 0, W, H).data;
-        let skin = 0, total = W * H;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2];
-          // Klassik teri rangi heuristikasi (RGB)
-          if (
-            r > 95 && g > 40 && b > 20 &&
-            r > g && r > b &&
-            Math.abs(r - g) > 15 &&
-            Math.max(r, g, b) - Math.min(r, g, b) > 15
-          ) skin++;
-        }
-        resolve({ skinPct: skin / total, error: false });
-      } catch {
-        resolve({ skinPct: 0, error: true });
-      }
-    });
-  }
-
-  function mediaVisibleSize(el) {
-    const r = el.getBoundingClientRect();
-    const w = r.width || el.offsetWidth || el.naturalWidth || el.videoWidth || 0;
-    const h = r.height || el.offsetHeight || el.naturalHeight || el.videoHeight || 0;
-    return { w, h };
-  }
-  function minSizeFor(el) {
-    if (YOUTUBE_AGGRESSIVE_MODE && (el?.tagName === "IMG" || el?.tagName === "VIDEO")) return 110;
-    return MIN_SIZE;
-  }
-
-  function shouldFailClosed(_el, _local = {}, _visualSignal = false) {
-    // Check-then-Block: never block on analysis failure. Only confirmed AI verdicts block.
     return false;
   }
 
-  async function firstBlockingAnalysis(urls, failClosed = false, fast = true) {
-    let last = { block: failClosed, reason: failClosed ? "Tekshiruv yakunlanmadi — xavfsizlik bloki" : "" };
-    for (const u of urls) {
-      const result = await analyzeMediaUrlPreferBase64(u, failClosed, fast);
-      last = result;
-      if (result.block) return result;
-    }
-    return last;
+  function hostWhitelisted() {
+    const h = location.hostname + location.pathname;
+    for (const w of HARD_WHITELIST) if (h.includes(w)) return true;
+    return false;
   }
 
-  // ========== AI request ==========
-  async function analyzeUrl(url, failClosed = false, fast = true) {
-    if (!canCallCloud()) return { block: false, reason: "" };
-    const key = urlHash(url);
-    if (CACHE[key]) return { block: CACHE[key].b, reason: CACHE[key].r || "" };
+  // ─────────────────────────── Cache ────────────────────────────────
+  function cacheKeyFor(el) {
+    return el.tagName === "VIDEO"
+      ? (el.currentSrc || el.src || el.dataset?.videoId || "video:" + (el.poster || ""))
+      : (el.currentSrc || el.src || "");
+  }
+  function cacheGet(k) {
+    const v = STATE.verdictCache.get(k);
+    if (!v) return null;
+    if (Date.now() - v.ts > CACHE_TTL_MS) { STATE.verdictCache.delete(k); return null; }
+    return v;
+  }
+  function cacheSet(k, verdict, reason) {
+    STATE.verdictCache.set(k, { verdict, ts: Date.now(), reason });
+    if (STATE.verdictCache.size > 2000) {
+      const first = STATE.verdictCache.keys().next().value;
+      STATE.verdictCache.delete(first);
+    }
+  }
+
+  // ─────────────────────────── Overlay ──────────────────────────────
+  // Non-destructive blocker: hides target via visibility:hidden, drops an
+  // absolutely-positioned sibling overlay over its bounding box. No parent
+  // gets mutated. Overlay keeps itself aligned via rAF while target exists.
+  function shield(target, reason) {
+    if (STATE.overlays.has(target)) return;
+    target.classList.add("ai-radar-hidden-media");
+    if (target.tagName === "VIDEO") { try { target.pause(); } catch {} }
+
+    const overlay = document.createElement("div");
+    overlay.className = "ai-radar-overlay";
+    overlay.innerHTML =
+      `<div class="ico">🛡️</div><div class="ttl">BLOCKED</div><div class="rsn">${escapeHtml(reason || "Harmful content")}</div>`;
+
+    // Swallow ALL pointer interactions over the overlay
+    const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+    ["click", "mousedown", "mouseup", "auxclick", "contextmenu", "pointerdown", "touchstart"]
+      .forEach((t) => overlay.addEventListener(t, swallow, true));
+
+    document.body.appendChild(overlay);
+
+    const reposition = () => {
+      if (!target.isConnected) return cleanup();
+      const r = target.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) {
+        overlay.style.display = "none";
+      } else {
+        overlay.style.display = "flex";
+        overlay.style.left = (r.left + window.scrollX) + "px";
+        overlay.style.top = (r.top + window.scrollY) + "px";
+        overlay.style.width = r.width + "px";
+        overlay.style.height = r.height + "px";
+      }
+      rec.raf = requestAnimationFrame(reposition);
+    };
+    const cleanup = () => {
+      try { cancelAnimationFrame(rec.raf); } catch {}
+      try { overlay.remove(); } catch {}
+      STATE.overlays.delete(target);
+    };
+    const rec = { overlay, target, raf: 0, cleanup };
+    STATE.overlays.set(target, rec);
+    rec.raf = requestAnimationFrame(reposition);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ──────────────────────── Heuristic scoring ────────────────────────
+  // Combine NSFWJS preds with motion / palette de-bias.
+  // preds: { Porn, Hentai, Sexy, Neutral, Drawing }
+  function scoreFromPreds(preds, ctx = {}) {
+    if (!preds) return 0;
+    const porn = preds.Porn || 0;
+    const hentai = preds.Hentai || 0;
+    const sexy = preds.Sexy || 0;
+    const neutral = preds.Neutral || 0;
+    const drawing = preds.Drawing || 0;
+
+    let score = porn * 1.0 + hentai * 0.95 + sexy * 0.55;
+    // Strong-neutral or drawing → de-emphasize
+    if (neutral > 0.7) score *= 0.55;
+    if (drawing > 0.6 && porn < 0.4 && hentai < 0.4) score *= 0.5;
+
+    // Motion / non-flesh palette → de-bias (sports, racing, gear)
+    if (ctx.highMotion && ctx.lowFleshRatio) score *= 0.35;
+    else if (ctx.highMotion) score *= 0.7;
+    else if (ctx.lowFleshRatio) score *= 0.8;
+
+    return Math.min(1, Math.max(0, score));
+  }
+
+  // Lightweight palette estimate for videos: sample a frame, compute flesh ratio.
+  function estimateFleshRatio(mediaEl) {
     try {
-      const res = await fetch(`${API_BASE}/analyze-image`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_url: url, fast: VISUAL_RISK_HOST ? false : fast, language: "uz", youth_protection: true }),
-      });
-      if (res.status === 402 || res.status === 429) {
-        tripAiQuota();
-        console.warn("[AI Radar] AI quota tugadi — 5 min keyin qayta yoqiladi");
-        return { block: false, reason: "" };
+      const canvas = document.createElement("canvas");
+      const w = canvas.width = 64;
+      const h = canvas.height = 64;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(mediaEl, 0, 0, w, h);
+      const data = ctx.getImageData(0, 0, w, h).data;
+      let flesh = 0, total = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        total++;
+        // Simple flesh heuristic
+        if (r > 95 && g > 40 && b > 20 && r > g && r > b && (r - g) > 15 && Math.abs(r - g) < 80) flesh++;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const result = { block: !!data.should_block, reason: data.block_reason || data.category || "" };
-      CACHE[key] = { b: result.block, r: result.reason, t: Date.now() };
-      cacheDirty = true;
-      return result;
-    } catch (e) {
-      return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" };
-    }
-  }
-  async function analyzeBase64(base64, failClosed = false, fast = true) {
-    if (!canCallCloud()) return { block: false, reason: "" };
-    try {
-      const res = await fetch(`${API_BASE}/analyze-image`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ANON_KEY}`, "apikey": ANON_KEY },
-        body: JSON.stringify({ image_base64: base64, fast: VISUAL_RISK_HOST ? false : fast, language: "uz", youth_protection: true }),
-      });
-      if (res.status === 402 || res.status === 429) { tripAiQuota(); return { block: false, reason: "" }; }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      return { block: !!data.should_block, reason: data.block_reason || data.category || "" };
-    } catch { return { block: failClosed, reason: failClosed ? "Tekshiruv xatosi — xavfsizlik bloki" : "" }; }
-  }
-  async function analyzeMediaUrlPreferBase64(url, failClosed = false, fast = true) {
-    if (!url) return { block: failClosed, reason: failClosed ? "Media URL topilmadi — xavfsizlik bloki" : "" };
-    if (url.startsWith("data:image/")) return analyzeBase64(url.split(",")[1], failClosed, fast);
-    const dataUrl = await fetchImageViaBackground(url);
-    if (dataUrl?.startsWith("data:image/")) return analyzeBase64(dataUrl.split(",")[1], failClosed, fast);
-    return analyzeUrl(url, failClosed, fast);
+      return total ? flesh / total : 0;
+    } catch { return 0.2; } // canvas tainted → neutral fallback
   }
 
-  // ========== Queue ==========
-  function enqueue(task) { QUEUE.push(task); drain(); }
-  function drain() {
-    while (active < MAX_CONCURRENT && QUEUE.length) {
-      const t = QUEUE.shift();
-      active++;
-      t().finally(() => { active--; drain(); });
-    }
-  }
+  // ──────────────────────── Scan pipeline ────────────────────────────
+  function enqueue(el) {
+    if (STATE.paused || hostWhitelisted()) return;
+    if (!isMediaCandidate(el)) return;
+    const prev = STATE.elState.get(el);
+    const key = cacheKeyFor(el);
+    if (!key) return;
+    if (prev && prev.key === key && prev.state !== "pending") return;
 
-  // ========== Scanners ==========
-  async function processImage(img) {
-    if (paused) return;
-    if (img.dataset.aiRadarBlocked) return;
-    const url = mediaUrl(img);
-    if (!url || url === BLANK_PIXEL || url.length < 10) return;
-    if (PROCESSING.get(img) === url) return;
-    if (!img.complete || !img.naturalWidth) {
-      img.addEventListener("load", () => processImage(img), { once: true });
-      return;
-    }
-    const min = minSizeFor(img);
-    if (img.naturalWidth < min || img.naturalHeight < min) return;
-
-    PROCESSING.set(img, url);
-    // Check-then-Block: no pre-shield. Image stays visible during analysis.
-
-    // 1. Local URL/keyword
-    const local = localBlockDecision(img, url);
-    if (local.block) { shieldElement(img, local.reason, "local"); return; }
-
-    // 2. Whitelist domain → AI'siz o'tkaz
-    const pageRiskyNow = PAGE_RISKY || isRiskyPageContext();
-    if (WHITELISTED && !pageRiskyNow) return;
-
-    img.classList.add("ai-radar-scanning");
-
-    // 3. LOKAL NSFW MODEL (NSFWJS) — CORS bypass bilan
-    let robustData = null;
-    let visualSuspicious = false;
-    if (nsfwReady) {
-      const r = await classifyRobust(url);
-      if (r && r.preds) {
-        if (r.dataUrl) robustData = r.dataUrl; // background fetch ishlatildi
-        const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST || local.suspicious);
-        if (decision?.suspicious) visualSuspicious = true;
-        if (decision?.block) {
-          img.classList.remove("ai-radar-scanning");
-          shieldElement(img, decision.reason, "local");
-          return;
-        }
-        if (decision?.confident && !decision.block && !VISUAL_RISK_HOST && !local.suspicious && !pageRiskyNow) {
-          img.classList.remove("ai-radar-scanning");
-          clearPreShield(img);
-          noteLocalApproved();
-          return;
-        }
-      }
-    }
-
-    // 4. Lokal skin-tone (NSFW yo'q bo'lsa fallback)
-    const { skinPct, error } = await analyzeSkinToneLocal(img);
-    img.classList.remove("ai-radar-scanning");
-
-    let finalSkinPct = skinPct;
-    let finalSkinError = error;
-    if (error && robustData) {
-      // Canvas failed on cross-origin img — retry with background-fetched dataUrl
-      const tmpImg = new Image();
-      tmpImg.src = robustData;
-      await new Promise(res => { tmpImg.onload = res; tmpImg.onerror = res; setTimeout(res, 2000); });
-      const retry = await analyzeSkinToneLocal(tmpImg);
-      if (!retry.error) { finalSkinPct = retry.skinPct; finalSkinError = false; }
-    }
-
-    const highSkin = !finalSkinError && finalSkinPct > (VISUAL_RISK_HOST ? 0.42 : 0.48) && img.naturalWidth >= 200;
-    if (YOUTUBE_HOST && (local.suspicious || hasSoftMediaRisk(collectContext(img, url))) && !finalSkinError && finalSkinPct > 0.22) {
-      visualSuspicious = true;
-    }
-
-    const failClosed = shouldFailClosed(img, local, highSkin || visualSuspicious);
-    // 5. Cloud AI (faqat haqiqatan shubhali holatlarda) — base64 bo'lsa undan foydalan
-    if (aiDisabled) {
-      if (failClosed) shieldElement(img, "AI mavjud emas — xavfsizlik bloki", "local");
-      else clearPreShield(img);
-      return;
-    }
-    const shouldUseCloud = visualSuspicious || local.suspicious || highSkin || pageRiskyNow;
-    if (shouldUseCloud) {
-      enqueue(async () => {
-        let result;
-        if (robustData || url.startsWith("data:image/")) {
-          const b64 = (robustData || url).split(",")[1];
-          result = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
-        } else result = await firstBlockingAnalysis(analysisUrlsForElement(img, url), failClosed, !YOUTUBE_AGGRESSIVE_MODE);
-        if (result.block) shieldElement(img, result.reason, "cloud");
-        else clearPreShield(img);
-      });
-    } else {
-      clearPreShield(img);
-    }
-  }
-
-  function processVideo(video) {
-    if (paused) return;
-    if (video.dataset.aiRadarBlocked) return;
-    const poster = analysisUrlForVideo(video);
-    const key = `${poster}|${video.currentSrc || video.src || ""}|${location.href}`;
-    if (PROCESSING.get(video) === key) return;
-    const local = localBlockDecision(video, poster);
-    if (local.block) { shieldElement(video, local.reason, "local"); return; }
-    if (WHITELISTED && !isRiskyPageContext()) return;
-
-    PROCESSING.set(video, key);
-    // Check-then-Block: no pre-shield. Video remains clickable/playable during analysis.
-    const contextText = collectContext(video, poster);
-    if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) {
-      scheduleVideoBurst(video);
-    }
-    if (local.suspicious || hasSoftMediaRisk(contextText)) {
-      setTimeout(() => { if (!video.dataset.aiRadarBlocked) captureFrame(video, false); }, 250);
-    }
-    if (poster && !poster.startsWith("data:") && !poster.startsWith("blob:")) {
-      enqueue(async () => {
-        const { block, reason } = await firstBlockingAnalysis(
-          analysisUrlsForElement(video, poster),
-          shouldFailClosed(video, local, true),
-          !YOUTUBE_AGGRESSIVE_MODE,
-        );
-        if (block) shieldElement(video, reason, "cloud");
-        else if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
-      });
-    } else {
-      enqueue(() => captureFrame(video, false));
-    }
-    // continuous scan disabled; only suspicious visible/new videos are sampled once/burst
-    video.addEventListener("playing", () => {
-      if (local.suspicious || hasSoftMediaRisk(contextText) || hasMetaSuspectRisk(contextText)) scheduleVideoBurst(video);
-    });
-    // continuous scan listener disabled
-    video.addEventListener("pause", () => stopContinuousVideoScan(video));
-    video.addEventListener("ended", () => stopContinuousVideoScan(video));
-  }
-
-  function scheduleVideoBurst(video) {
-    if (video.dataset.aiRadarBursting) return;
-    video.dataset.aiRadarBursting = "1";
-    // Partner Mode: short burst only; no endless/continuous video analysis.
-    [600, 3000].forEach((ms) => {
-      setTimeout(() => {
-        if (!video.dataset.aiRadarBlocked && document.contains(video)) captureFrame(video, false);
-      }, ms);
-    });
-    setTimeout(() => { try { delete video.dataset.aiRadarBursting; } catch {} }, 8000);
-  }
-
-  function stopContinuousVideoScan(video) {
-    const timer = VIDEO_SCAN_TIMERS.get(video);
-    if (timer) clearInterval(timer);
-    VIDEO_SCAN_TIMERS.delete(video);
-  }
-  function startContinuousVideoScan(video) {
-    if (VIDEO_SCAN_TIMERS.has(video)) return;
-    const timer = setInterval(() => {
-      if (!document.contains(video) || video.dataset.aiRadarBlocked) {
-        stopContinuousVideoScan(video);
-        return;
-      }
-      if (video.paused || video.ended || video.readyState < 2) return;
-      captureFrame(video, true);
-    }, 2200);
-    VIDEO_SCAN_TIMERS.set(video, timer);
-  }
-
-  function captureFrameDataUrl(video, w, h) {
-    const c = document.createElement("canvas");
-    c.width = w; c.height = h;
-    c.getContext("2d").drawImage(video, 0, 0, w, h);
-    return c.toDataURL("image/jpeg", 0.6);
-  }
-
-  async function captureFrame(video, failClosed = false) {
-    if (paused) return;
-    if (video.readyState < 2) {
-      video.addEventListener("loadeddata", () => captureFrame(video, failClosed), { once: true });
-      return;
-    }
-    const W = Math.min(video.videoWidth || 256, 384);
-    const H = Math.min(video.videoHeight || 256, 384);
-
-    // Reels/TikTok kabi oqimlarda videoni seek qilish feedni buzadi; faqat hozirgi kadrni tekshiramiz.
-    if (VISUAL_RISK_HOST) {
-      await sampleCurrentVideoFrame(video, W, H, failClosed);
+    // Cache hit?
+    const cached = cacheGet(key);
+    if (cached) {
+      if (cached.verdict === "bad") shield(el, cached.reason || "Harmful content");
+      STATE.elState.set(el, { state: cached.verdict === "bad" ? "bad" : "safe", key });
       return;
     }
 
-    // Oddiy videolarda 3 ta frame'ni sample qilamiz (boshi, o'rtasi, oxiri yaqini)
-    const samplePoints = [];
-    const dur = isFinite(video.duration) ? video.duration : 0;
-    if (dur > 2) {
-      samplePoints.push(0, dur * 0.33, dur * 0.66);
-    } else {
-      samplePoints.push(video.currentTime || 0);
+    STATE.elState.set(el, { state: "pending", key });
+    STATE.queue.push(el);
+    pump();
+  }
+
+  function pump() {
+    while (STATE.active < MAX_CONCURRENT && STATE.queue.length) {
+      const el = STATE.queue.shift();
+      if (!el || !el.isConnected) continue;
+      STATE.active++;
+      scan(el).finally(() => { STATE.active--; pump(); });
+    }
+  }
+
+  async function scan(el) {
+    const key = cacheKeyFor(el);
+    if (!key) return finalize(el, key, "safe");
+
+    // Layer 1 — URL / context text
+    const ctxText = contextText(el) + " " + key;
+    const urlS = urlSignal(ctxText);
+
+    // Quick hard-bad path: explicit NSFW words AND not in safe vocab
+    if (urlS >= 0.85) {
+      return finalize(el, key, "bad", "URL/keyword: explicit");
     }
 
-    for (const t of samplePoints) {
+    // Layer 2 — Local NSFW classifier (images only, video sampled below)
+    let preds = null;
+    let ctx = { highMotion: false, lowFleshRatio: false };
+
+    if (el.tagName === "IMG" && STATE.nsfwReady) {
+      const res = await classifyLocal(key);
+      if (!res.error) preds = res.preds || res;
+    } else if (el.tagName === "VIDEO" && STATE.nsfwReady) {
+      // Sample current frame; if low flesh ratio + motion, skip classification
+      const fleshRatio = estimateFleshRatio(el);
+      ctx.lowFleshRatio = fleshRatio < 0.08;
+      // detect motion: compare two frames 80ms apart
       try {
-        if (dur > 2 && Math.abs(video.currentTime - t) > 0.5) {
-          await new Promise((resolve) => {
-            const onSeek = () => { video.removeEventListener("seeked", onSeek); resolve(); };
-            video.addEventListener("seeked", onSeek, { once: true });
-            try { video.currentTime = t; } catch { resolve(); }
-            setTimeout(resolve, 1500);
-          });
+        const a = grabFrame(el, 48);
+        await new Promise((r) => setTimeout(r, 80));
+        const b = grabFrame(el, 48);
+        ctx.highMotion = motionDelta(a, b) > 0.18;
+      } catch {}
+      if (ctx.lowFleshRatio && ctx.highMotion) {
+        // Sports / racing clear path
+        return finalize(el, key, "safe");
+      }
+      // Classify the sampled frame via NSFW model
+      try {
+        const tmp = await canvasToDataUrl(el);
+        if (tmp) {
+          const res = await classifyLocal(tmp, 4000);
+          if (!res.error) preds = res.preds || res;
         }
-        const dataUrl = captureFrameDataUrl(video, W, H);
-
-        // 1. Lokal NSFW (frame'ga)
-        if (nsfwReady) {
-          const r = await classifyLocal(dataUrl, 4000);
-          if (r && r.preds) {
-            const decision = decideFromNsfw(r.preds, VISUAL_RISK_HOST);
-            if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
-            if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); continue; }
-          }
-        }
-
-        // 2. Cloud (faqat shubhali kadr)
-        if (aiDisabled) continue;
-        const b64 = dataUrl.split(",")[1];
-        const { block, reason } = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
-        if (block) { shieldElement(video, reason, "cloud"); return; }
       } catch {}
     }
-    clearPreShield(video);
-  }
 
-  async function sampleCurrentVideoFrame(video, W, H, failClosed = false) {
-    try {
-      const dataUrl = captureFrameDataUrl(video, W, H);
-      if (nsfwReady) {
-        const r = await classifyLocal(dataUrl, 4000);
-        if (r && r.preds) {
-          const decision = decideFromNsfw(r.preds, true);
-          if (decision?.block) { shieldElement(video, decision.reason, "local"); return; }
-          if (decision?.confident && !decision.block && !VISUAL_RISK_HOST) { noteLocalApproved(); clearPreShield(video); return; }
+    const score = scoreFromPreds(preds, ctx) + Math.max(0, urlS);
+
+    if (score >= LOCAL_BLOCK_THRESHOLD) {
+      STATE.stats.localBlocked = (STATE.stats.localBlocked || 0);
+      return finalize(el, key, "bad", "Local NSFW detector");
+    }
+
+    // Layer 3 — Cloud (only on ambiguity, only for IMG, only when allowed)
+    if (
+      el.tagName === "IMG" &&
+      score >= LOCAL_SUSPECT_THRESHOLD &&
+      canCallCloud()
+    ) {
+      try {
+        const verdict = await cloudCheckImage(key);
+        if (verdict.should_block) {
+          STATE.stats.cloudBlocked = (STATE.stats.cloudBlocked || 0);
+          return finalize(el, key, "bad", verdict.block_reason || "Cloud filter");
         }
+      } catch {
+        // Cloud failure on safe-leaning score → never block. Selective rule.
       }
-      if (aiDisabled) { if (failClosed) shieldElement(video, "AI mavjud emas — video xavfsizlik bloki", "local"); else clearPreShield(video); return; }
-      const b64 = dataUrl.split(",")[1];
-      const { block, reason } = await analyzeBase64(b64, failClosed, !YOUTUBE_AGGRESSIVE_MODE);
-      if (block) shieldElement(video, reason, "cloud");
-      else clearPreShield(video);
-    } catch {}
+    }
+
+    finalize(el, key, "safe");
   }
 
-  const io = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      const el = e.target;
-      if (el.tagName === "IMG") processImage(el);
-      else if (el.tagName === "VIDEO") processVideo(el);
-      io.unobserve(el);
+  function finalize(el, key, verdict, reason) {
+    cacheSet(key, verdict, reason);
+    STATE.elState.set(el, { state: verdict === "bad" ? "bad" : "safe", key });
+    if (verdict === "bad") {
+      shield(el, reason || "Harmful content");
+      recordBlock("local", reason || "Local NSFW detector");
+    } else {
+      STATE.stats.localApproved++;
+      persistStats();
     }
-  }, { rootMargin: "300px", threshold: 0.01 });
+  }
 
-  function observe(el) {
-    if (el.tagName !== "IMG" && el.tagName !== "VIDEO") return;
-    // Partner Mode: no pre-blocking; analyze only visible/new media in background
-    io.observe(el);
-    const { w, h } = mediaVisibleSize(el);
-    const min = minSizeFor(el);
-    if (w >= min && h >= min) {
-      if (el.tagName === "IMG") processImage(el);
-      else processVideo(el);
+  // ─────────────────────────── Frame utils ──────────────────────────
+  function grabFrame(media, size = 48) {
+    const c = document.createElement("canvas");
+    c.width = size; c.height = size;
+    c.getContext("2d").drawImage(media, 0, 0, size, size);
+    return c.getContext("2d").getImageData(0, 0, size, size).data;
+  }
+  function motionDelta(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let diff = 0, n = 0;
+    for (let i = 0; i < a.length; i += 16) {
+      diff += Math.abs(a[i] - b[i]);
+      n++;
     }
+    return (diff / n) / 255;
+  }
+  async function canvasToDataUrl(media) {
+    try {
+      const c = document.createElement("canvas");
+      c.width = 224; c.height = 224;
+      c.getContext("2d").drawImage(media, 0, 0, 224, 224);
+      return c.toDataURL("image/jpeg", 0.7);
+    } catch { return null; }
+  }
+
+  // ─────────────────────────── Cloud call ───────────────────────────
+  function canCallCloud() {
+    if (STATE.aiQuotaTripped) return false;
+    if (STATE.cloudCallsThisMinute >= CLOUD_RATE_LIMIT) return false;
+    STATE.cloudCallsThisMinute++;
+    if (!STATE.cloudResetTimer) {
+      STATE.cloudResetTimer = setTimeout(() => {
+        STATE.cloudCallsThisMinute = 0;
+        STATE.cloudResetTimer = null;
+      }, 60_000);
+    }
+    return true;
+  }
+
+  async function cloudCheckImage(url) {
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const resp = await fetch(`${API_BASE}/analyze-image`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": ANON_KEY,
+          "Authorization": "Bearer " + ANON_KEY,
+        },
+        body: JSON.stringify({ image_url: url, fast: true }),
+        signal: ctl.signal,
+      });
+      clearTimeout(to);
+      if (resp.status === 429) { STATE.aiQuotaTripped = true; return { should_block: false }; }
+      if (!resp.ok) return { should_block: false };
+      return await resp.json();
+    } catch {
+      clearTimeout(to);
+      return { should_block: false }; // never block on cloud error
+    }
+  }
+
+  // ─────────────────────────── Observer ─────────────────────────────
+  function scanRoot(root) {
+    if (!root || !root.querySelectorAll) return;
+    const list = root.querySelectorAll?.("img,video") || [];
+    list.forEach((el) => enqueue(el));
+    if (root.tagName === "IMG" || root.tagName === "VIDEO") enqueue(root);
   }
 
   const mo = new MutationObserver((muts) => {
     for (const m of muts) {
-      for (const node of m.addedNodes) {
-        if (node.nodeType !== 1) continue;
-        if (node.tagName === "IMG" || node.tagName === "VIDEO") observe(node);
-        node.querySelectorAll && node.querySelectorAll("img, video").forEach(observe);
-      }
-      // src o'zgargan rasmlarni qayta tekshirmaslik (biz o'zimiz BLANK_PIXEL'ga o'rnatamiz)
+      m.addedNodes && m.addedNodes.forEach((n) => {
+        if (n.nodeType === 1) scanRoot(n);
+      });
       if (m.type === "attributes" && (m.target.tagName === "IMG" || m.target.tagName === "VIDEO")) {
-        if (m.target.dataset.aiRadarBlocked) {
-          // Agar kimdir asl src'ni qayta tiklamoqchi bo'lsa — qayta blok
-          const src = m.target.src || m.target.currentSrc;
-          if (src && src !== BLANK_PIXEL && !src.startsWith("data:")) {
-            try {
-              if (m.target.tagName === "IMG") m.target.src = BLANK_PIXEL;
-              else if (m.target.tagName === "VIDEO") { m.target.removeAttribute("src"); m.target.load(); }
-            } catch {}
-          }
-        } else {
-          observe(m.target);
-          if (m.target.tagName === "IMG") processImage(m.target);
-          else processVideo(m.target);
+        // Re-scan when src changes
+        const st = STATE.elState.get(m.target);
+        const key = cacheKeyFor(m.target);
+        if (!st || st.key !== key) {
+          // remove any stale overlay
+          const ov = STATE.overlays.get(m.target);
+          if (ov) { ov.cleanup?.(); }
+          m.target.classList.remove("ai-radar-hidden-media");
+          enqueue(m.target);
         }
       }
     }
   });
 
   function start() {
-    mo.observe(document.documentElement, {
-      childList: true, subtree: true,
-      attributes: true, attributeFilter: ["src", "poster", "srcset"],
-    });
-    document.querySelectorAll("img, video").forEach(observe);
-    // interval rescan disabled; MutationObserver + scroll rescan handles new media
-    console.log(`%c[AI Radar v6] 🛡️ Faol — ${WHITELISTED ? "whitelist" : "to'liq monitoring"}`, "color:#10b981;font-weight:bold");
+    try {
+      mo.observe(document.documentElement, {
+        childList: true, subtree: true,
+        attributes: true, attributeFilter: ["src", "currentSrc", "poster"],
+      });
+    } catch {}
+    scanRoot(document.body || document.documentElement);
+    // Periodic sweep for lazy-loaded media that mutated outside observer
+    setInterval(() => scanRoot(document.body), 2500);
   }
 
   if (document.readyState === "loading") {
@@ -1175,4 +535,6 @@
   } else {
     start();
   }
+
+  console.log("[AI Radar] v8.0 monitor loaded (non-destructive, overlay-only)");
 })();
