@@ -279,3 +279,29 @@ prototype → stable MVP → user adoption → ecosystem expansion
 # FINAL PROJECT MISSION
 
 Build a smarter, healthier, AI-powered digital environment that protects users from harmful online systems while preserving useful and educational internet functionality.
+---
+
+# CRITICAL RULE — SELECTIVE BLOCKING (HARMFUL-ONLY)
+
+Any new function, filter, blocker, overlay, or moderation skill MUST apply
+ONLY to content that has been confirmed harmful by the moderation pipeline.
+
+Normal / safe content MUST continue to work exactly as it did before the
+feature was added — no blocking, no blur, no click interception, no URL
+rewrite, no thumbnail replacement.
+
+Behavior contract:
+- Harmful detected  -> block fully: hide media, prevent click-through,
+  prevent opening the original URL, prevent opening the image/video,
+  prevent context-menu/right-click bypass on that specific item.
+- Not harmful / unknown-safe -> pass through untouched. Standard playback,
+  standard navigation, standard rendering. Zero side effects.
+- False positives on ordinary videos/images/pages are a regression and
+  must be fixed.
+
+This rule applies to: browser extension (monitor.js, content.js),
+SafeNetGuard overlay, edge functions (analyze-image, analyze-video,
+analyze-text, moderation-feedback), OS agent, and any future module.
+
+Every AI assistant working on this project (any model, any session) MUST
+follow this rule.

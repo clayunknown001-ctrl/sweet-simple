@@ -48,3 +48,21 @@ AI-powered browser and filtering ecosystem that blocks harmful content while all
 - AI safety ecosystem
 - Secure browser
 - Custom Android/Linux-based OS
+---
+
+## CRITICAL RULE — Selective Blocking (Harmful-Only)
+
+New blocking/filtering features apply **only** to confirmed harmful content.
+Safe/normal content must keep working exactly as before — no blur, no
+click interception, no URL/thumbnail rewrite.
+
+- Harmful → fully block: hide, prevent click, prevent opening URL/image,
+  prevent right-click bypass.
+- Safe/unknown-safe → pass through untouched.
+- False positives on ordinary videos/images/pages are regressions.
+
+Applies to: extension (`monitor.js`, `content.js`), `SafeNetGuard`,
+edge functions (`analyze-image`, `analyze-video`, `analyze-text`,
+`moderation-feedback`), OS agent, and all future modules.
+
+Every AI assistant (any model, any session) must follow this rule.
