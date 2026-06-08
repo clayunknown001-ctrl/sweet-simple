@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
   "name": "AI Radar — Real-Time Content Shield",
-  "version": "2.4.1",
-  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.4.1: strict youth vision + risky page image checks.",
+  "version": "2.5.0",
+  "description": "Brauzerdagi behayo, zo'ravonlik va zararli kontentni real vaqtda bloklaydi. v2.5.0: production video/image monitor.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["monitor.js"],
       "css": ["shield.css"],
       "run_at": "document_start",
       "all_frames": true
