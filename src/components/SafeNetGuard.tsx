@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { Pose, type Results, POSE_CONNECTIONS } from "@mediapipe/pose";
-import { Camera } from "@mediapipe/camera_utils";
 import "@/lib/safenet_full.js";
+
+type Results = any;
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement("script");
+    s.src = src;
+    s.crossOrigin = "anonymous";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load " + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadMediapipe() {
+  await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js");
+  await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js");
+}
 import { Shield, ShieldOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
