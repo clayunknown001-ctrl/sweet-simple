@@ -32,7 +32,7 @@ const features = [
     icon: <Code2 className="w-8 h-8" />,
     title: "API hujjatlari",
     desc: "O'z loyihangizga integratsiya qilish uchun to'liq API dokumentatsiyasi.",
-    link: "/api-docs",
+    link: "/api",
     color: "text-primary",
     glow: "glow-primary",
   },
