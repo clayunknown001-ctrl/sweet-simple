@@ -7,7 +7,9 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Users, DollarSign, TrendingUp, HardDrive, Lock, LogOut } from "lucide-react";
+import { Loader2, Users, DollarSign, TrendingUp, HardDrive, Lock, LogOut, KeyRound, Cpu } from "lucide-react";
+import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
+import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
 
 interface Analytics {
   total_users_count: number;
@@ -106,13 +108,18 @@ export default function AdminDashboard() {
         </div>
 
         <Tabs defaultValue="overview">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="feedback">Feedback</TabsTrigger>
+            <TabsTrigger value="api-keys"><KeyRound className="w-3 h-3 mr-1" /> B2B API Keys</TabsTrigger>
+            <TabsTrigger value="core-script"><Cpu className="w-3 h-3 mr-1" /> Core Script</TabsTrigger>
             <TabsTrigger value="admins">
               Admin Management {role !== "owner" && <Lock className="w-3 h-3 ml-1" />}
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="api-keys" className="mt-6"><ApiKeysPanel /></TabsContent>
+          <TabsContent value="core-script" className="mt-6"><CoreScriptConfig /></TabsContent>
 
           <TabsContent value="overview" className="space-y-6 mt-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
