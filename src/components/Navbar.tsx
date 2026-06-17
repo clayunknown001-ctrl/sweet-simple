@@ -1,17 +1,56 @@
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FileText, Image, Video, BookOpen, Zap, Shield } from "lucide-react";
+import { Brain, FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LayoutDashboard } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
-const navItems = [
-  { path: "/", label: "Bosh sahifa", icon: Zap },
-  { path: "/extension", label: "Brauzer Radar", icon: Shield },
-  { path: "/text-analysis", label: "Matn", icon: FileText },
-  { path: "/image-analysis", label: "Rasm", icon: Image },
-  { path: "/video-analysis", label: "Video", icon: Video },
-  { path: "/api-docs", label: "API", icon: BookOpen },
-];
+interface NavItem {
+  path: string;
+  label: string;
+  icon: any;
+}
 
 export default function Navbar() {
   const location = useLocation();
+  const { session, role, user } = useAuth();
+  const [hasRadarAccess, setHasRadarAccess] = useState(false);
+
+  // Brauzer Radar: owner OR an admin listed in any flag's allowed_admin_emails
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (role === "owner") {
+        if (!cancelled) setHasRadarAccess(true);
+        return;
+      }
+      if (role === "admin" && user?.email) {
+        const { data } = await supabase
+          .from("system_flags")
+          .select("allowed_admin_emails");
+        const ok = !!data?.some((r: any) =>
+          (r.allowed_admin_emails ?? []).includes(user.email!)
+        );
+        if (!cancelled) setHasRadarAccess(ok);
+      } else {
+        if (!cancelled) setHasRadarAccess(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [role, user?.email]);
+
+  const items: NavItem[] = [
+    { path: "/", label: "Bosh sahifa", icon: Zap },
+    { path: "/text-analysis", label: "Matn", icon: FileText },
+    { path: "/image-analysis", label: "Rasm", icon: Image },
+    { path: "/video-analysis", label: "Video", icon: Video },
+    { path: "/api", label: "API", icon: KeyRound },
+  ];
+
+  if (hasRadarAccess) {
+    items.splice(1, 0, { path: "/extension", label: "Brauzer Radar", icon: Shield });
+  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -28,13 +67,13 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-1">
-          {navItems.map(({ path, label, icon: Icon }) => {
+          {items.map(({ path, label, icon: Icon }) => {
             const active = location.pathname === path;
             return (
               <Link
                 key={path}
                 to={path}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   active
                     ? "bg-primary/10 text-primary glow-green"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -45,6 +84,26 @@ export default function Navbar() {
               </Link>
             );
           })}
+
+          {session ? (
+            (role === "admin" || role === "owner") && (
+              <Link
+                to="/admin-dashboard"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-cyan hover:bg-cyan/10"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span className="hidden md:inline">Admin</span>
+              </Link>
+            )
+          ) : (
+            <Link
+              to="/auth"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden md:inline">Kirish</span>
+            </Link>
+          )}
         </div>
       </div>
     </nav>
