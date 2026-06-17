@@ -7,7 +7,7 @@ import Index from "./pages/Index";
 import TextAnalysis from "./pages/TextAnalysis";
 import ImageAnalysis from "./pages/ImageAnalysis";
 import VideoAnalysis from "./pages/VideoAnalysis";
-import ApiDocs from "./pages/ApiDocs";
+import Api from "./pages/Api";
 import Extension from "./pages/Extension";
 import NotFound from "./pages/NotFound";
 import SafeNetGuard from "./components/SafeNetGuard";
@@ -39,8 +39,16 @@ const App = () => (
             <Route path="/text-analysis" element={<TextAnalysis />} />
             <Route path="/image-analysis" element={<ImageAnalysis />} />
             <Route path="/video-analysis" element={<VideoAnalysis />} />
-            <Route path="/api-docs" element={<ApiDocs />} />
-            <Route path="/extension" element={<Extension />} />
+            <Route path="/api" element={<Api />} />
+            <Route path="/api-docs" element={<Api />} />
+            <Route
+              path="/extension"
+              element={
+                <RequireAuth roles={["admin", "owner"]}>
+                  <Extension />
+                </RequireAuth>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <SafeNetGuard />

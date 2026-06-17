@@ -101,14 +101,61 @@ export default function CoreScriptConfig() {
 
   return (
     <div className="space-y-4">
+      <Card className="border-primary/30 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Cpu className="w-4 h-4 text-primary" /> Core Script — bu nima?
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3 text-muted-foreground">
+          <p>
+            <strong className="text-foreground">Core Script</strong> — bu brauzerda
+            ishlaydigan moderatsiya yadrosi (<code className="px-1 bg-muted rounded">monitor.js</code>),
+            u har bir sahifadagi rasm/video/matnni kuzatadi va zararli kontentni bloklaydi.
+            Bu yerdan uning <em>ishlash rejimi</em> va kim qaysi flagni o'zgartira olishini boshqarasiz.
+          </p>
+          <div className="grid md:grid-cols-2 gap-3 pt-1">
+            <div className="border border-border rounded-lg p-3 bg-background">
+              <p className="font-semibold text-foreground flex items-center gap-1.5 mb-1">
+                <Cpu className="w-3.5 h-3.5" /> Local / Edge Client Mode <Badge variant="outline" className="ml-1">ON</Badge>
+              </p>
+              <p className="text-xs">
+                Transformers.js + ONNX brauzerda ishlaydi. Tashqi API'ga so'rov yo'q.
+                Tezroq, arzon, oflayn ishlaydi. <strong>Zaif tomonlari:</strong> birinchi yuklash og'irroq,
+                eski qurilmalarda sekinroq.
+              </p>
+            </div>
+            <div className="border border-border rounded-lg p-3 bg-background">
+              <p className="font-semibold text-foreground flex items-center gap-1.5 mb-1">
+                <Cloud className="w-3.5 h-3.5" /> API Hybrid Mode <Badge variant="outline" className="ml-1">OFF</Badge>
+              </p>
+              <p className="text-xs">
+                Og'ir tahlillar bizning <code className="px-1 bg-muted rounded">analyze-*</code> edge
+                funksiyalariga yuboriladi. <strong>Aniqroq</strong> natijalar, lekin har bir so'rov
+                kvota ishlatadi va tarmoq talab qiladi.
+              </p>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-border space-y-1.5">
+            <p className="text-foreground font-semibold">Qanday ishlatish kerak:</p>
+            <ul className="list-disc pl-5 text-xs space-y-1">
+              <li><strong>Staging</strong> — sinov kanali. Har qanday admin (ruxsati bo'lsa) o'zgartira oladi. Faqat dev/test brauzerlarga ta'sir qiladi.</li>
+              <li><strong>Production</strong> — real foydalanuvchilar. Faqat <em>owner</em> yoqa/o'chira oladi.</li>
+              <li><strong>Authorized admin emails</strong> — owner muayyan adminlarga ushbu flagni boshqarishga ruxsat beradi.</li>
+              <li>Avval staging'da sinab ko'ring → keyin production'ga ko'taring.</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="border-amber-500/30 bg-amber-500/5">
         <CardContent className="py-4 flex items-start gap-3">
           <ShieldCheck className="w-5 h-5 text-amber-500 mt-0.5" />
           <div className="text-sm">
             <p className="font-semibold">Staging-first writes</p>
             <p className="text-muted-foreground">
-              Changes land in the <Badge variant="outline">staging</Badge> channel.
-              Only the owner can promote to <Badge variant="outline">production</Badge>.
+              O'zgarishlar avval <Badge variant="outline">staging</Badge> kanaliga yoziladi.
+              Faqat owner uni <Badge variant="outline">production</Badge>'ga ko'tara oladi.
             </p>
           </div>
         </CardContent>

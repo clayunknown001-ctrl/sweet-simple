@@ -32,7 +32,7 @@ const features = [
     icon: <Code2 className="w-8 h-8" />,
     title: "API hujjatlari",
     desc: "O'z loyihangizga integratsiya qilish uchun to'liq API dokumentatsiyasi.",
-    link: "/api-docs",
+    link: "/api",
     color: "text-primary",
     glow: "glow-primary",
   },
@@ -61,8 +61,8 @@ export default function Index() {
         </p>
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center items-stretch sm:items-center max-w-md sm:max-w-none mx-auto">
           <Button asChild className="bg-primary text-primary-foreground hover:opacity-90 glow-primary px-6 sm:px-8 py-5 sm:py-6 text-sm sm:text-base">
-            <Link to="/extension">
-              🛡️ Brauzer Radarni o'rnatish
+            <Link to="/api">
+              🔑 API kalit olish
             </Link>
           </Button>
           <Button asChild variant="outline" className="border-cyan/30 text-cyan hover:bg-cyan/10 px-6 py-5 sm:py-3">
