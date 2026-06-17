@@ -1,13 +1,1 @@
-project_id = "iwyntbeqdvsbzvmskpaw"
-
-[functions.analyze-text]
-verify_jwt = false
-
-[functions.analyze-image]
-verify_jwt = true
-
-[functions.analyze-video]
-verify_jwt = false
-
-[functions.moderation-feedback]
-verify_jwt = true
+project_id = "gpfweizmjzaupfxxmqvg"
