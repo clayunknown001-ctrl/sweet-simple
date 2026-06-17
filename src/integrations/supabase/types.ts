@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_keys: {
+        Row: {
+          created_at: string
+          developer_email: string
+          developer_id: string | null
+          environment: string
+          id: string
+          key_masked: string
+          key_token: string
+          monthly_quota: number
+          requests_used: number
+          status: string
+          tier: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          developer_email: string
+          developer_id?: string | null
+          environment?: string
+          id?: string
+          key_masked: string
+          key_token: string
+          monthly_quota?: number
+          requests_used?: number
+          status?: string
+          tier?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          developer_email?: string
+          developer_id?: string | null
+          environment?: string
+          id?: string
+          key_masked?: string
+          key_token?: string
+          monthly_quota?: number
+          requests_used?: number
+          status?: string
+          tier?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_developer_id_fkey"
+            columns: ["developer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feedback: {
         Row: {
           created_at: string
@@ -64,6 +117,36 @@ export type Database = {
         }
         Relationships: []
       }
+      system_flags: {
+        Row: {
+          allowed_admin_emails: string[]
+          description: string | null
+          flag_name: string
+          id: number
+          production_value: boolean
+          staging_value: boolean
+          updated_at: string
+        }
+        Insert: {
+          allowed_admin_emails?: string[]
+          description?: string | null
+          flag_name: string
+          id?: number
+          production_value?: boolean
+          staging_value?: boolean
+          updated_at?: string
+        }
+        Update: {
+          allowed_admin_emails?: string[]
+          description?: string | null
+          flag_name?: string
+          id?: number
+          production_value?: boolean
+          staging_value?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -90,13 +173,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_manage_flag: { Args: { _flag_name: string }; Returns: boolean }
+      generate_api_key: {
+        Args: {
+          _developer_email: string
+          _environment?: string
+          _tier?: string
+        }
+        Returns: Json
+      }
+      get_api_usage_analytics: { Args: never; Returns: Json }
       get_system_analytics: { Args: never; Returns: Json }
+      grant_flag_admin: {
+        Args: { _email: string; _flag_name: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      set_system_flag: {
+        Args: { _channel?: string; _flag_name: string; _value: boolean }
+        Returns: Json
       }
       set_user_role_by_email: {
         Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
