@@ -24,9 +24,14 @@ export type Database = {
           key_masked: string
           key_token: string
           monthly_quota: number
+          payment_status: string
           requests_used: number
           status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           tier: string
+          token_quota: number
+          tokens_used: number
           updated_at: string
         }
         Insert: {
@@ -38,9 +43,14 @@ export type Database = {
           key_masked: string
           key_token: string
           monthly_quota?: number
+          payment_status?: string
           requests_used?: number
           status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           tier?: string
+          token_quota?: number
+          tokens_used?: number
           updated_at?: string
         }
         Update: {
@@ -52,9 +62,14 @@ export type Database = {
           key_masked?: string
           key_token?: string
           monthly_quota?: number
+          payment_status?: string
           requests_used?: number
           status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           tier?: string
+          token_quota?: number
+          tokens_used?: number
           updated_at?: string
         }
         Relationships: [
@@ -174,6 +189,7 @@ export type Database = {
     }
     Functions: {
       can_manage_flag: { Args: { _flag_name: string }; Returns: boolean }
+      delete_my_api_key: { Args: { _key_id: string }; Returns: Json }
       generate_api_key: {
         Args: {
           _developer_email: string
@@ -203,6 +219,15 @@ export type Database = {
       }
       set_user_role_by_email: {
         Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
+        Returns: Json
+      }
+      upgrade_my_api_key_tier: {
+        Args: {
+          _key_id: string
+          _stripe_customer_id?: string
+          _stripe_subscription_id?: string
+          _tier: string
+        }
         Returns: Json
       }
     }

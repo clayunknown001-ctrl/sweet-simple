@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
-import { BookOpen, Copy, Check, Shield, KeyRound, Loader2, Trash2, LogIn } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  BookOpen, Copy, Check, Shield, KeyRound, Loader2, Trash2, LogIn,
+  Zap, Crown, Infinity as InfinityIcon, AlertTriangle, CreditCard,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,6 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -41,10 +48,18 @@ interface MyKey {
   tier: string;
   environment: string;
   status: string;
-  monthly_quota: number;
-  requests_used: number;
+  token_quota: number;
+  tokens_used: number;
+  payment_status: string;
+  stripe_subscription_id: string | null;
   created_at: string;
 }
+
+const TIER_LABEL: Record<string, string> = {
+  free_trial: "Free Trial",
+  pro_monthly: "Pro Monthly",
+  pay_as_you_go: "Pay-as-you-go",
+};
 
 export default function Api() {
   const { session, user } = useAuth();
@@ -52,14 +67,16 @@ export default function Api() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [billingKey, setBillingKey] = useState<MyKey | null>(null);
 
   const load = async () => {
     if (!session) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("api_keys")
-      .select("id,key_masked,tier,environment,status,monthly_quota,requests_used,created_at")
+      .select("id,key_masked,tier,environment,status,token_quota,tokens_used,payment_status,stripe_subscription_id,created_at")
       .eq("developer_id", user!.id)
+      .neq("status", "deleted")
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);
     else setKeys((data as any) ?? []);
@@ -78,19 +95,47 @@ export default function Api() {
     else {
       const token = (data as any)?.token;
       setRevealed(token);
-      toast.success("API key yaratildi — uni hozir saqlab oling, qaytadan ko'rsatilmaydi.");
+      toast.success("API kalit yaratildi — hozir nusxa oling, qaytadan ko'rsatilmaydi.");
       await load();
     }
     setBusy(false);
   };
 
-  const revoke = async (id: string) => {
-    if (!confirm("Bu kalitni bekor qilishni xohlaysizmi?")) return;
-    const { error } = await supabase.rpc("revoke_my_api_key", { _key_id: id });
+  const hardDelete = async (id: string) => {
+    if (!confirm("Bu kalitni butunlay o'chirib tashlaysizmi?")) return;
+    const { error } = await supabase.rpc("delete_my_api_key", { _key_id: id });
     if (error) toast.error(error.message);
     else {
-      toast.success("Kalit bekor qilindi");
+      toast.success("Kalit o'chirildi");
       await load();
+    }
+  };
+
+  const startCheckout = async (key: MyKey, tier: "pro_monthly" | "pay_as_you_go") => {
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-stripe-checkout", {
+        body: { key_id: key.id, tier },
+      });
+      if (error) throw error;
+      if ((data as any)?.url) {
+        window.location.href = (data as any).url;
+        return;
+      }
+      if ((data as any)?.placeholder) {
+        toast.info("Stripe hali ulanmagan. Demo rejimda tierni yangilaymiz.");
+        const { error: upErr } = await supabase.rpc("upgrade_my_api_key_tier", {
+          _key_id: key.id, _tier: tier,
+        });
+        if (upErr) throw upErr;
+        toast.success(`${TIER_LABEL[tier]} faollashtirildi (demo).`);
+        setBillingKey(null);
+        await load();
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? "Checkout xato");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -108,11 +153,10 @@ export default function Api() {
             <span className="text-primary">API kalitingiz</span>
           </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Bir martalik kalit yarating va matn / rasm / video moderatsiyasini o'z ilovangizga ulang.
+            Token-asosli moderatsiya API. Free Trial cheklangan, Pro yoki Pay-as-you-go bilan kengaytiring.
           </p>
         </div>
 
-        {/* Personal key panel */}
         <Card className="border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -131,9 +175,9 @@ export default function Api() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <p className="text-sm text-muted-foreground">
-                    {keys.length} / 3 aktiv kalit · {user?.email}
+                    {keys.filter(k => k.status === "active").length} / 3 aktiv kalit · {user?.email}
                   </p>
                   <Button onClick={generate} disabled={busy || keys.filter(k=>k.status==='active').length>=3}>
                     {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <KeyRound className="w-4 h-4 mr-2" />}
@@ -158,33 +202,9 @@ export default function Api() {
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {keys.map((k) => {
-                      const pct = Math.min(100, (k.requests_used / k.monthly_quota) * 100);
-                      return (
-                        <div key={k.id} className="border border-border rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 font-mono text-sm">
-                              {k.key_masked}
-                              <Badge variant={k.status === "active" ? "default" : "secondary"}>
-                                {k.status}
-                              </Badge>
-                              <Badge variant="outline">{k.tier}</Badge>
-                              <Badge variant="outline">{k.environment}</Badge>
-                            </div>
-                            {k.status === "active" && (
-                              <Button size="sm" variant="ghost" onClick={() => revoke(k.id)}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
-                          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                            <span>{k.requests_used.toLocaleString()} so'rov</span>
-                            <span>{k.monthly_quota.toLocaleString()} oylik kvota</span>
-                          </div>
-                          <Progress value={pct} />
-                        </div>
-                      );
-                    })}
+                    {keys.map((k) => <ApiKeyRow key={k.id} k={k}
+                      onDelete={() => hardDelete(k.id)}
+                      onUpgrade={() => setBillingKey(k)} />)}
                   </div>
                 )}
               </>
@@ -192,23 +212,50 @@ export default function Api() {
           </CardContent>
         </Card>
 
+        {/* Pricing teaser */}
+        <div className="grid md:grid-cols-3 gap-4">
+          <PlanCard
+            icon={<Zap className="w-5 h-5" />}
+            name="Free Trial"
+            price="$0"
+            tokens="5,000 tokens"
+            tagline="Test uchun. 20 daqiqalik kunda 3-4 kun yetadi."
+            highlight={false}
+          />
+          <PlanCard
+            icon={<Crown className="w-5 h-5 text-amber-400" />}
+            name="Pro Monthly"
+            price="$20/oy"
+            tokens="2,000,000 tokens"
+            tagline="Har oy yangilanadi. Ishlab chiqaruvchilar uchun ideal."
+            highlight
+          />
+          <PlanCard
+            icon={<InfinityIcon className="w-5 h-5 text-primary" />}
+            name="Pay-as-you-go"
+            price="Hisoblangan"
+            tokens="Cheksiz"
+            tagline="1M token = ~$8. Faqat ishlatganingiz uchun to'laysiz."
+          />
+        </div>
+
         {/* Docs */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5" /> API hujjatlari — Brauzer integratsiyasi
+              <BookOpen className="w-5 h-5" /> API hujjatlari
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="rounded-lg border border-border bg-card p-4 space-y-2 text-sm">
-              <p><Shield className="w-4 h-4 inline mr-1 text-primary" /> 3 ta endpoint <code className="px-1.5 py-0.5 rounded bg-muted text-primary">should_block</code> maydonini qaytaradi:</p>
+              <p><Shield className="w-4 h-4 inline mr-1 text-primary" /> 3 ta endpoint:</p>
               <ul className="font-mono text-xs space-y-1 pl-6">
                 <li><span className="text-primary">POST</span> {BASE_URL}/functions/v1/analyze-text</li>
                 <li><span className="text-primary">POST</span> {BASE_URL}/functions/v1/analyze-image</li>
                 <li><span className="text-primary">POST</span> {BASE_URL}/functions/v1/analyze-video</li>
               </ul>
               <p className="text-xs text-muted-foreground pt-1">
-                Header: <code className="bg-muted px-1 rounded">Authorization: Bearer {`{YOUR_API_KEY}`}</code> · Til: <code className="bg-muted px-1 rounded">language: "uz" | "en" | "ru"</code>
+                Header: <code className="bg-muted px-1 rounded">Authorization: Bearer {`{YOUR_API_KEY}`}</code>
               </p>
             </div>
 
@@ -221,19 +268,15 @@ export default function Api() {
               <TabsContent value="js" className="mt-4">
                 <CodeBlock code={`const API_KEY = "sk_test_...";
 
-async function analyzeText(text) {
-  const res = await fetch("${BASE_URL}/functions/v1/analyze-text", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": \`Bearer \${API_KEY}\`,
-    },
-    body: JSON.stringify({ text, language: "uz" }),
-  });
-  const { should_block, reason, score } = await res.json();
-  if (should_block) console.warn("Blocked:", reason);
-  return { should_block, score };
-}`} />
+const res = await fetch("${BASE_URL}/functions/v1/analyze-text", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": \`Bearer \${API_KEY}\`,
+  },
+  body: JSON.stringify({ text: "salom", language: "uz" }),
+});
+const { should_block, reason, score, tokens_used } = await res.json();`} />
               </TabsContent>
               <TabsContent value="curl" className="mt-4">
                 <CodeBlock code={`curl -X POST "${BASE_URL}/functions/v1/analyze-image" \\
@@ -243,30 +286,141 @@ async function analyzeText(text) {
               </TabsContent>
               <TabsContent value="py" className="mt-4">
                 <CodeBlock code={`import requests
-
-API_KEY = "sk_test_..."
 r = requests.post(
     "${BASE_URL}/functions/v1/analyze-video",
-    headers={"Authorization": f"Bearer {API_KEY}"},
+    headers={"Authorization": "Bearer sk_test_..."},
     json={"video_url": "https://...", "language": "uz"},
 )
-print(r.json())  # { should_block, reason, score }`} />
+print(r.json())`} />
               </TabsContent>
             </Tabs>
-
-            <div className="rounded-lg border border-border bg-card p-4 text-sm">
-              <p className="font-semibold mb-2">Javob formati</p>
-              <CodeBlock code={`{
-  "should_block": true,
-  "reason": "nsfw_detected",
-  "score": 0.94,
-  "categories": ["nsfw", "violence"],
-  "language": "uz"
-}`} />
-            </div>
           </CardContent>
         </Card>
       </section>
+
+      {/* Billing modal */}
+      <Dialog open={!!billingKey} onOpenChange={(o) => !o && setBillingKey(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" /> Tarifni yangilang
+            </DialogTitle>
+            <DialogDescription>
+              Karta orqali xavfsiz to'lov. Istalgan vaqtda bekor qilishingiz mumkin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <button
+              disabled={busy}
+              onClick={() => billingKey && startCheckout(billingKey, "pro_monthly")}
+              className="w-full rounded-lg border border-primary/40 bg-primary/5 hover:bg-primary/10 p-4 text-left transition"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold flex items-center gap-2"><Crown className="w-4 h-4 text-amber-400"/> Pro Monthly</span>
+                <span className="text-primary font-bold">$20<span className="text-xs text-muted-foreground">/oy</span></span>
+              </div>
+              <p className="text-xs text-muted-foreground">2,000,000 premium token. Oylik avtomatik yangilanish.</p>
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => billingKey && startCheckout(billingKey, "pay_as_you_go")}
+              className="w-full rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 p-4 text-left transition"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold flex items-center gap-2"><InfinityIcon className="w-4 h-4 text-primary"/> Pay-as-you-go</span>
+                <span className="font-bold">Metered</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Limitsiz. Iste'mol hisoblanib, oy oxirida hisob-kitob qilinadi.</p>
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBillingKey(null)}>Bekor qilish</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function ApiKeyRow({
+  k, onDelete, onUpgrade,
+}: { k: MyKey; onDelete: () => void; onUpgrade: () => void }) {
+  const unlimited = k.tier === "pay_as_you_go";
+  const pct = useMemo(
+    () => unlimited ? 0 : Math.min(100, (k.tokens_used / Math.max(1, k.token_quota)) * 100),
+    [k, unlimited],
+  );
+  const remaining = unlimited ? Infinity : Math.max(0, k.token_quota - k.tokens_used);
+  const lowWarn = !unlimited && pct >= 85;
+
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 font-mono text-sm flex-wrap">
+          {k.key_masked}
+          <Badge variant={k.status === "active" ? "default" : "secondary"}>{k.status}</Badge>
+          <Badge variant="outline">{TIER_LABEL[k.tier] ?? k.tier}</Badge>
+          {k.payment_status !== "none" && (
+            <Badge variant="outline" className="border-primary/40 text-primary">
+              {k.payment_status}
+            </Badge>
+          )}
+          <Badge variant="outline">{k.environment}</Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          {k.tier === "free_trial" && (
+            <Button size="sm" onClick={onUpgrade}>
+              <Crown className="w-4 h-4 mr-1" /> Upgrade
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={onDelete}>
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {unlimited ? (
+        <div className="flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1 text-primary">
+            <InfinityIcon className="w-3 h-3" /> Limitsiz · {k.tokens_used.toLocaleString()} token ishlatildi
+          </span>
+          <span className="text-muted-foreground">Pay-as-you-go faol</span>
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-between text-xs">
+            <span className={lowWarn ? "text-amber-500 font-semibold flex items-center gap-1" : "text-muted-foreground"}>
+              {lowWarn && <AlertTriangle className="w-3 h-3" />}
+              {k.tokens_used.toLocaleString()} / {k.token_quota.toLocaleString()} tokens consumed
+            </span>
+            <span className="text-muted-foreground">{remaining.toLocaleString()} qoldi</span>
+          </div>
+          <Progress value={pct} className={lowWarn ? "[&>div]:bg-amber-500" : ""} />
+          {lowWarn && (
+            <p className="text-xs text-amber-500">
+              ⚠️ Tokenlar tugab bormoqda. Pro yoki Pay-as-you-go ga o'tib limitsiz ishlang.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PlanCard({
+  icon, name, price, tokens, tagline, highlight,
+}: {
+  icon: React.ReactNode; name: string; price: string;
+  tokens: string; tagline: string; highlight?: boolean;
+}) {
+  return (
+    <Card className={highlight ? "border-primary/50 bg-primary/5" : ""}>
+      <CardContent className="pt-5 space-y-2">
+        <div className="flex items-center gap-2 font-semibold">{icon} {name}</div>
+        <p className="text-2xl font-bold">{price}</p>
+        <p className="text-sm text-primary font-mono">{tokens}</p>
+        <p className="text-xs text-muted-foreground">{tagline}</p>
+      </CardContent>
+    </Card>
   );
 }
