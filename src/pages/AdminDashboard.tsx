@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -6,8 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Loader2, Users, DollarSign, TrendingUp, HardDrive, Lock, LogOut, KeyRound, Cpu } from "lucide-react";
+import {
+  Loader2, Users, DollarSign, TrendingUp, HardDrive, Lock, LogOut, KeyRound, Cpu,
+  CalendarDays, CalendarRange, Wallet, ArrowUpRight, ShoppingBag, ChevronRight, Crown, UserPlus, List,
+} from "lucide-react";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
 
@@ -26,9 +32,54 @@ interface Feedback {
   created_at: string;
 }
 
+interface Purchase {
+  id: string;
+  name: string;
+  email: string;
+  plan: string;
+  amount: number;
+  at: string;
+}
+
+interface Subscriber {
+  id: string;
+  name: string;
+  email: string;
+  joined: string;
+  pro?: boolean;
+  renewals?: number;
+  activeUntil?: string;
+}
+
 const fmt = (n: number) => new Intl.NumberFormat().format(n);
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 const mb = (b: number) => (b / 1024 / 1024).toFixed(1) + " MB";
+const timeAgo = (iso: string) => {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+};
+
+// --- Mock data (wired dynamically; replace with backend later) ---
+const MOCK_PURCHASES: Purchase[] = [
+  { id: "p1", name: "Akmal Karimov", email: "akmal@example.com", plan: "Pro Plan", amount: 29, at: new Date(Date.now() - 1000 * 60 * 12).toISOString() },
+  { id: "p2", name: "Dilnoza Rashidova", email: "dilnoza@example.com", plan: "Pro Plan", amount: 29, at: new Date(Date.now() - 1000 * 60 * 95).toISOString() },
+  { id: "p3", name: "Bekzod Tursunov", email: "bekzod@example.com", plan: "Starter", amount: 9, at: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString() },
+  { id: "p4", name: "Madina Yusupova", email: "madina@example.com", plan: "Pro Plan", amount: 29, at: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString() },
+  { id: "p5", name: "Sardor Aliev", email: "sardor@example.com", plan: "Pro Plan", amount: 29, at: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString() },
+];
+
+const MOCK_SUBSCRIBERS: Subscriber[] = [
+  { id: "s1", name: "Akmal Karimov", email: "akmal@example.com", joined: "2026-05-10", pro: true, renewals: 4, activeUntil: "2026-07-10" },
+  { id: "s2", name: "Dilnoza Rashidova", email: "dilnoza@example.com", joined: "2026-06-02", pro: true, renewals: 1, activeUntil: "2026-07-02" },
+  { id: "s3", name: "Bekzod Tursunov", email: "bekzod@example.com", joined: "2026-06-15" },
+  { id: "s4", name: "Madina Yusupova", email: "madina@example.com", joined: "2026-04-21", pro: true, renewals: 3, activeUntil: "2026-05-21" },
+  { id: "s5", name: "Sardor Aliev", email: "sardor@example.com", joined: "2026-06-18", pro: true, renewals: 1, activeUntil: "2026-07-18" },
+  { id: "s6", name: "Nigora Saidova", email: "nigora@example.com", joined: "2026-03-30" },
+  { id: "s7", name: "Jasur Komilov", email: "jasur@example.com", joined: "2026-06-20" },
+];
 
 export default function AdminDashboard() {
   const { role, signOut, user } = useAuth();
