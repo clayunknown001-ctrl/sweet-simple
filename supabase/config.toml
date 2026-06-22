@@ -1,1 +1,4 @@
 project_id = "qqsfrmsstymkpitteldp"
+
+[functions.submit-feedback]
+verify_jwt = false
