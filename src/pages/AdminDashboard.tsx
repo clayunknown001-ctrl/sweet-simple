@@ -297,37 +297,10 @@ export default function AdminDashboard() {
 
 
           <TabsContent value="feedback" className="mt-6">
-            <Card>
-              <CardHeader><CardTitle>User Feedback ({feedback.length})</CardTitle></CardHeader>
-              <CardContent>
-                {feedback.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No feedback yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-muted-foreground border-b border-border">
-                        <tr>
-                          <th className="py-2 pr-4">Email</th>
-                          <th className="py-2 pr-4">Message</th>
-                          <th className="py-2">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {feedback.map((f) => (
-                          <tr key={f.id} className="border-b border-border/50">
-                            <td className="py-3 pr-4 font-medium">{f.user_email}</td>
-                            <td className="py-3 pr-4">{f.message}</td>
-                            <td className="py-3 text-muted-foreground whitespace-nowrap">
-                              {new Date(f.created_at).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <FeedbackPanel
+              tickets={feedback}
+              onChanged={load}
+            />
           </TabsContent>
 
           <TabsContent value="admins" className="mt-6">
