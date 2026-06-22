@@ -151,3 +151,36 @@ chrome.storage.onChanged.addListener((changes, area) => {
     renderWhitelist(changes.userWhitelist.newValue || []);
   }
 });
+
+// === Feedback yuborish (Narimon AI dashboard ulanishi) ===
+const FEEDBACK_URL = "https://qqsfrmsstymkpitteldp.supabase.co/functions/v1/submit-feedback";
+const fbSend = document.getElementById("fbSend");
+if (fbSend) {
+  fbSend.addEventListener("click", async () => {
+    const email = (document.getElementById("fbEmail")?.value || "").trim();
+    const message = (document.getElementById("fbMessage")?.value || "").trim();
+    const status = document.getElementById("fbStatus");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      status.textContent = "❌ Email noto'g'ri"; status.style.color = "#f87171"; return;
+    }
+    if (message.length < 3) {
+      status.textContent = "❌ Xabar juda qisqa"; status.style.color = "#f87171"; return;
+    }
+    fbSend.disabled = true;
+    status.textContent = "⏳ Yuborilmoqda..."; status.style.color = "#94a3b8";
+    try {
+      const r = await fetch(FEEDBACK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, message, source: "extension" }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Xatolik");
+      status.textContent = "✅ Yuborildi. Rahmat!"; status.style.color = "#4ade80";
+      document.getElementById("fbMessage").value = "";
+    } catch (e) {
+      status.textContent = "❌ " + (e?.message || "Xatolik"); status.style.color = "#f87171";
+    } finally {
+      fbSend.disabled = false;
+    }
+  });
+}

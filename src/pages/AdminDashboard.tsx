@@ -13,7 +13,9 @@ import { toast } from "sonner";
 import {
   Loader2, Users, DollarSign, TrendingUp, HardDrive, Lock, LogOut, KeyRound, Cpu,
   CalendarDays, CalendarRange, Wallet, ArrowUpRight, ShoppingBag, ChevronRight, Crown, UserPlus, List,
+  Send, Mail, Clock, MessageSquare, Inbox, CheckCircle2, CircleDashed, CircleAlert,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
 
@@ -30,6 +32,11 @@ interface Feedback {
   user_email: string;
   message: string;
   created_at: string;
+  status?: string | null;
+  source?: string | null;
+  admin_reply?: string | null;
+  admin_responder_email?: string | null;
+  admin_responded_at?: string | null;
 }
 
 interface Purchase {
@@ -290,37 +297,10 @@ export default function AdminDashboard() {
 
 
           <TabsContent value="feedback" className="mt-6">
-            <Card>
-              <CardHeader><CardTitle>User Feedback ({feedback.length})</CardTitle></CardHeader>
-              <CardContent>
-                {feedback.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No feedback yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-muted-foreground border-b border-border">
-                        <tr>
-                          <th className="py-2 pr-4">Email</th>
-                          <th className="py-2 pr-4">Message</th>
-                          <th className="py-2">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {feedback.map((f) => (
-                          <tr key={f.id} className="border-b border-border/50">
-                            <td className="py-3 pr-4 font-medium">{f.user_email}</td>
-                            <td className="py-3 pr-4">{f.message}</td>
-                            <td className="py-3 text-muted-foreground whitespace-nowrap">
-                              {new Date(f.created_at).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <FeedbackPanel
+              tickets={feedback}
+              onChanged={load}
+            />
           </TabsContent>
 
           <TabsContent value="admins" className="mt-6">
@@ -510,3 +490,236 @@ function SubscriberListDialog({
   );
 }
 
+
+// ============= Feedback Two-Panel UI =============
+function statusMeta(s?: string | null) {
+  const v = (s || "open").toLowerCase();
+  if (v === "resolved") return { label: "Resolved", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/40", Icon: CheckCircle2 };
+  if (v === "pending") return { label: "Pending", cls: "bg-amber-500/15 text-amber-400 border-amber-500/40", Icon: CircleDashed };
+  return { label: "Open", cls: "bg-sky-500/15 text-sky-400 border-sky-500/40", Icon: CircleAlert };
+}
+
+function FeedbackPanel({ tickets, onChanged }: { tickets: Feedback[]; onChanged: () => void }) {
+  const [selectedId, setSelectedId] = useState<string | null>(tickets[0]?.id ?? null);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "resolved">("all");
+
+  // Realtime: live updates when new feedback arrives or a ticket is updated
+  useEffect(() => {
+    const channel = supabase
+      .channel("feedback-stream")
+      .on("postgres_changes", { event: "*", schema: "public", table: "feedback" }, () => {
+        onChanged();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [onChanged]);
+
+  const filtered = useMemo(
+    () => tickets.filter((t) => statusFilter === "all" || (t.status || "open") === statusFilter),
+    [tickets, statusFilter]
+  );
+  const selected = useMemo(
+    () => filtered.find((t) => t.id === selectedId) ?? filtered[0] ?? null,
+    [filtered, selectedId]
+  );
+
+  useEffect(() => {
+    setReply(selected?.admin_reply ?? "");
+  }, [selected?.id, selected?.admin_reply]);
+
+  const counts = useMemo(() => {
+    const c = { all: tickets.length, open: 0, pending: 0, resolved: 0 } as Record<string, number>;
+    tickets.forEach((t) => { c[(t.status || "open")] = (c[(t.status || "open")] || 0) + 1; });
+    return c;
+  }, [tickets]);
+
+  const send = async (newStatus: "pending" | "resolved") => {
+    if (!selected) return;
+    const txt = reply.trim();
+    if (txt.length < 2) return toast.error("Type a response first");
+    setSending(true);
+    try {
+      const { error } = await supabase.rpc("reply_feedback", {
+        _id: selected.id, _reply: txt, _status: newStatus,
+      });
+      if (error) toast.error(error.message);
+      else { toast.success(newStatus === "resolved" ? "Resolved & sent" : "Reply saved"); onChanged(); }
+    } finally { setSending(false); }
+  };
+
+  return (
+    <Card className="border-border/60 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] h-[640px]">
+        {/* LEFT: Queue */}
+        <div className="border-r border-border/60 flex flex-col bg-card/40">
+          <div className="p-4 border-b border-border/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Inbox className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold">Inbox</h3>
+                <Badge variant="outline" className="text-xs">{tickets.length}</Badge>
+              </div>
+            </div>
+            <div className="flex gap-1 text-xs">
+              {(["all", "open", "pending", "resolved"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`flex-1 px-2 py-1 rounded border transition-colors capitalize ${
+                    statusFilter === s
+                      ? "bg-primary/15 border-primary/40 text-primary"
+                      : "border-border/60 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {s} {counts[s] ? `(${counts[s]})` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ScrollArea className="flex-1">
+            {filtered.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                No tickets here.
+              </div>
+            ) : (
+              <ul className="divide-y divide-border/40">
+                {filtered.map((t) => {
+                  const meta = statusMeta(t.status);
+                  const active = selected?.id === t.id;
+                  return (
+                    <li key={t.id}>
+                      <button
+                        onClick={() => setSelectedId(t.id)}
+                        className={`w-full text-left p-4 transition-colors ${
+                          active ? "bg-primary/10 border-l-2 border-primary" : "hover:bg-muted/40 border-l-2 border-transparent"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Mail className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <span className="text-xs font-medium truncate">{t.user_email}</span>
+                          </div>
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${meta.cls}`}>
+                            <meta.Icon className="w-2.5 h-2.5 mr-0.5" />
+                            {meta.label}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{t.message}</p>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5" />
+                            {new Date(t.created_at).toLocaleString()}
+                          </span>
+                          {t.source && t.source !== "web" && (
+                            <span className="px-1.5 py-0.5 rounded bg-muted/60 uppercase tracking-wider">{t.source}</span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </ScrollArea>
+        </div>
+
+        {/* RIGHT: Chat */}
+        <div className="flex flex-col bg-background/40">
+          {!selected ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+              Select a ticket from the inbox to view conversation.
+            </div>
+          ) : (
+            <>
+              <div className="p-4 border-b border-border/60 flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold truncate">{selected.user_email}</h3>
+                    {(() => { const m = statusMeta(selected.status); return (
+                      <Badge variant="outline" className={`text-[10px] ${m.cls}`}>
+                        <m.Icon className="w-2.5 h-2.5 mr-0.5" />{m.label}
+                      </Badge>
+                    ); })()}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Ticket #{selected.id.slice(0, 8)} · opened {new Date(selected.created_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <ScrollArea className="flex-1 p-4">
+                <div className="space-y-4 max-w-2xl">
+                  {/* User message */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
+                        {selected.user_email[0].toUpperCase()}
+                      </div>
+                      <span className="text-xs font-medium">{selected.user_email}</span>
+                      <span className="text-[10px] text-muted-foreground">{new Date(selected.created_at).toLocaleString()}</span>
+                    </div>
+                    <div className="ml-8 rounded-lg border border-border/60 bg-card/60 p-3 text-sm whitespace-pre-wrap">
+                      {selected.message}
+                    </div>
+                  </div>
+
+                  {/* Admin reply (if exists) */}
+                  {selected.admin_reply && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center text-[10px] font-bold text-primary">
+                          A
+                        </div>
+                        <span className="text-xs font-medium text-primary">
+                          {selected.admin_responder_email || "Admin"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {selected.admin_responded_at && new Date(selected.admin_responded_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="ml-8 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm whitespace-pre-wrap">
+                        {selected.admin_reply}
+                      </div>
+                      <p className="ml-8 mt-1.5 text-[10px] text-muted-foreground">
+                        Responded by: <span className="font-medium text-foreground">{selected.admin_responder_email || "Admin"}</span>
+                        {selected.admin_responded_at && <> at {new Date(selected.admin_responded_at).toLocaleString()}</>}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+
+              {/* Composer */}
+              <div className="border-t border-border/60 p-3 bg-card/40">
+                <Textarea
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  placeholder="Type your response..."
+                  rows={3}
+                  className="resize-none mb-2 bg-background"
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] text-muted-foreground">
+                    {selected.admin_reply ? "Editing existing response." : "Reply will be logged with your admin identity."}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={sending} onClick={() => send("pending")}>
+                      <CircleDashed className="w-3.5 h-3.5 mr-1.5" /> Save as Pending
+                    </Button>
+                    <Button size="sm" disabled={sending} onClick={() => send("resolved")}>
+                      {sending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+                      Send & Resolve
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
