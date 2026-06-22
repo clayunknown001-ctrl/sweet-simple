@@ -13,7 +13,9 @@ import { toast } from "sonner";
 import {
   Loader2, Users, DollarSign, TrendingUp, HardDrive, Lock, LogOut, KeyRound, Cpu,
   CalendarDays, CalendarRange, Wallet, ArrowUpRight, ShoppingBag, ChevronRight, Crown, UserPlus, List,
+  Send, Mail, Clock, MessageSquare, Inbox, CheckCircle2, CircleDashed, CircleAlert,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
 
@@ -30,6 +32,11 @@ interface Feedback {
   user_email: string;
   message: string;
   created_at: string;
+  status?: string | null;
+  source?: string | null;
+  admin_reply?: string | null;
+  admin_responder_email?: string | null;
+  admin_responded_at?: string | null;
 }
 
 interface Purchase {
