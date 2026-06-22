@@ -88,6 +88,17 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [targetEmail, setTargetEmail] = useState("");
   const [acting, setActing] = useState(false);
+  const [listOpen, setListOpen] = useState<null | "all" | "pro">(null);
+
+  const monthly = analytics?.monthly_revenue ?? 0;
+  const dailyProfit = +(monthly / 30).toFixed(2);
+  const yearlyProfit = +(monthly * 12).toFixed(2);
+  const proSubs = useMemo(() => MOCK_SUBSCRIBERS.filter((s) => s.pro), []);
+  const newThisMonth = useMemo(() => {
+    const cutoff = Date.now() - 1000 * 60 * 60 * 24 * 30;
+    return MOCK_SUBSCRIBERS.filter((s) => new Date(s.joined).getTime() >= cutoff).length;
+  }, []);
+  const isActive = (s: Subscriber) => !!s.activeUntil && new Date(s.activeUntil).getTime() >= Date.now();
 
   const load = async () => {
     setLoading(true);
