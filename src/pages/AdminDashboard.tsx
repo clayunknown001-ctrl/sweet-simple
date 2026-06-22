@@ -183,27 +183,111 @@ export default function AdminDashboard() {
           <TabsContent value="api-keys" className="mt-6"><ApiKeysPanel /></TabsContent>
           <TabsContent value="core-script" className="mt-6"><CoreScriptConfig /></TabsContent>
 
-          <TabsContent value="overview" className="space-y-6 mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Kpi icon={<Users />} label="Total Subscribers" value={fmt(analytics?.total_users_count ?? 0)} />
-              <Kpi icon={<DollarSign />} label="Monthly Revenue" value={usd(analytics?.monthly_revenue ?? 0)} />
-              <Kpi icon={<TrendingUp />} label="All-Time Profit" value={usd(analytics?.all_time_profit ?? 0)} />
+          <TabsContent value="overview" className="space-y-8 mt-6">
+            {/* Financial KPIs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <Kpi icon={<CalendarDays className="w-5 h-5" />} label="Daily Profit" value={usd(dailyProfit)} trend="+4.2%" />
+              <Kpi icon={<DollarSign className="w-5 h-5" />} label="Monthly Revenue" value={usd(monthly)} trend="+12.8%" />
+              <Kpi icon={<CalendarRange className="w-5 h-5" />} label="Yearly Profit" value={usd(yearlyProfit)} trend="+38.5%" />
+              <Kpi icon={<Wallet className="w-5 h-5" />} label="All-Time Profit" value={usd(analytics?.all_time_profit ?? 0)} trend="+100%" />
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><HardDrive className="w-5 h-5" /> Database Storage</CardTitle>
+            {/* Recent Purchases */}
+            <Card className="border-border/60 bg-card/60 backdrop-blur">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ShoppingBag className="w-4 h-4 text-primary" /> Recent Purchases
+                </CardTitle>
+                <span className="text-xs text-muted-foreground">{MOCK_PURCHASES.length} latest</span>
               </CardHeader>
-              <CardContent>
-                <div className="flex justify-between text-sm mb-2">
-                  <span>{mb(analytics?.db_storage_used_bytes ?? 0)} used</span>
-                  <span className="text-muted-foreground">/ {mb(analytics?.db_storage_limit_bytes ?? 0)}</span>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground border-y border-border/60">
+                      <tr>
+                        <th className="py-2.5 px-6">Customer</th>
+                        <th className="py-2.5 px-6">Source</th>
+                        <th className="py-2.5 px-6">Amount</th>
+                        <th className="py-2.5 px-6">When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MOCK_PURCHASES.map((p) => (
+                        <tr key={p.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-6">
+                            <div className="font-medium">{p.name}</div>
+                            <div className="text-xs text-muted-foreground">{p.email}</div>
+                          </td>
+                          <td className="py-3 px-6">
+                            <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10">
+                              Purchased: {p.plan}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-6 font-mono">{usd(p.amount)}</td>
+                          <td className="py-3 px-6 text-muted-foreground whitespace-nowrap">{timeAgo(p.at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <Progress value={storagePct} />
-                <p className="text-xs text-muted-foreground mt-2">{storagePct.toFixed(2)}% of quota</p>
               </CardContent>
             </Card>
+
+            {/* Subscribers */}
+            <section className="space-y-4">
+              <div className="flex items-end justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight">Subscribers</h2>
+                  <p className="text-xs text-muted-foreground">Aggregated subscriber metrics &amp; lists</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatCard
+                  icon={<Users className="w-5 h-5" />}
+                  label="Total Subscribers"
+                  value={fmt(analytics?.total_users_count ?? MOCK_SUBSCRIBERS.length)}
+                  hint="All registered users"
+                />
+                <StatCard
+                  icon={<UserPlus className="w-5 h-5" />}
+                  label="New This Month"
+                  value={fmt(newThisMonth)}
+                  hint="Joined in last 30 days"
+                />
+                <InteractiveCard
+                  icon={<List className="w-5 h-5" />}
+                  label="Subscribers List"
+                  meta={`${MOCK_SUBSCRIBERS.length} users`}
+                  onClick={() => setListOpen("all")}
+                />
+                <InteractiveCard
+                  icon={<Crown className="w-5 h-5" />}
+                  label="Pro Subscribers List"
+                  meta={`${proSubs.length} pro users`}
+                  onClick={() => setListOpen("pro")}
+                  accent
+                />
+              </div>
+            </section>
+
+            {/* Spacer + Database Storage */}
+            <div className="pt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><HardDrive className="w-5 h-5" /> Database Storage</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span>{mb(analytics?.db_storage_used_bytes ?? 0)} used</span>
+                    <span className="text-muted-foreground">/ {mb(analytics?.db_storage_limit_bytes ?? 0)}</span>
+                  </div>
+                  <Progress value={storagePct} />
+                  <p className="text-xs text-muted-foreground mt-2">{storagePct.toFixed(2)}% of quota</p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
+
 
           <TabsContent value="feedback" className="mt-6">
             <Card>
