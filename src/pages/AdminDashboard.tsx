@@ -362,23 +362,151 @@ export default function AdminDashboard() {
             )}
           </TabsContent>
         </Tabs>
+
+        <SubscriberListDialog
+          open={listOpen !== null}
+          onOpenChange={(o) => !o && setListOpen(null)}
+          mode={listOpen ?? "all"}
+          subscribers={listOpen === "pro" ? proSubs : MOCK_SUBSCRIBERS}
+          isActive={isActive}
+        />
       </div>
     </div>
   );
 }
 
-function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Kpi({ icon, label, value, trend }: { icon: React.ReactNode; label: string; value: string; trend?: string }) {
   return (
-    <Card>
+    <Card className="relative overflow-hidden border-border/60 bg-card/60 backdrop-blur transition-all hover:border-primary/50 hover:shadow-[0_0_24px_-12px_hsl(var(--primary))]">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
       <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-1">{value}</p>
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            {trend && (
+              <div className="flex items-center gap-1 text-xs text-primary">
+                <ArrowUpRight className="w-3 h-3" />
+                <span>{trend}</span>
+                <span className="text-muted-foreground">vs last period</span>
+              </div>
+            )}
           </div>
-          <div className="text-primary opacity-70">{icon}</div>
+          <div className="rounded-lg bg-primary/10 p-2 text-primary">{icon}</div>
         </div>
       </CardContent>
     </Card>
   );
 }
+
+function StatCard({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
+  return (
+    <Card className="border-border/60 bg-card/60 backdrop-blur">
+      <CardContent className="pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className="text-2xl font-bold mt-1">{value}</p>
+            {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+          </div>
+          <div className="rounded-lg bg-primary/10 p-2 text-primary">{icon}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InteractiveCard({
+  icon, label, meta, onClick, accent,
+}: { icon: React.ReactNode; label: string; meta: string; onClick: () => void; accent?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group text-left rounded-lg border bg-card/60 backdrop-blur p-5 transition-all hover:border-primary/60 hover:bg-card hover:shadow-[0_0_24px_-12px_hsl(var(--primary))] ${
+        accent ? "border-primary/40" : "border-border/60"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`rounded-lg p-2 ${accent ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"}`}>{icon}</div>
+          <div>
+            <p className="text-sm font-semibold">{label}</p>
+            <p className="text-xs text-muted-foreground">{meta}</p>
+          </div>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+      </div>
+    </button>
+  );
+}
+
+function SubscriberListDialog({
+  open, onOpenChange, mode, subscribers, isActive,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  mode: "all" | "pro";
+  subscribers: Subscriber[];
+  isActive: (s: Subscriber) => boolean;
+}) {
+  const pro = mode === "pro";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {pro ? <Crown className="w-4 h-4 text-primary" /> : <Users className="w-4 h-4 text-primary" />}
+            {pro ? "Pro Subscribers" : "All Subscribers"}
+            <Badge variant="outline" className="ml-2 border-primary/40 text-primary bg-primary/10">
+              {subscribers.length}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="max-h-[60vh]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border/60">
+                <tr>
+                  <th className="py-2.5 pr-4">Full Name</th>
+                  <th className="py-2.5 pr-4">Email</th>
+                  <th className="py-2.5 pr-4">Joined</th>
+                  {pro && <th className="py-2.5 pr-4">Renewals</th>}
+                  {pro && <th className="py-2.5 pr-4">Status</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {subscribers.map((s) => {
+                  const active = isActive(s);
+                  return (
+                    <tr key={s.id} className="border-b border-border/40">
+                      <td className="py-3 pr-4 font-medium">{s.name}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">{s.email}</td>
+                      <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">
+                        {new Date(s.joined).toLocaleDateString()}
+                      </td>
+                      {pro && <td className="py-3 pr-4 font-mono">{s.renewals ?? 0}</td>}
+                      {pro && (
+                        <td className="py-3 pr-4">
+                          {active ? (
+                            <Badge className="bg-primary/15 text-primary border border-primary/40 shadow-[0_0_12px_hsl(var(--primary)/0.4)]">
+                              Faol
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground border-border">
+                              Nofaol
+                            </Badge>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
