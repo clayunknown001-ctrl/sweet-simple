@@ -16,6 +16,10 @@ import {
   Send, Mail, Clock, MessageSquare, Inbox, CheckCircle2, CircleDashed, CircleAlert,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Shield, ShieldCheck, Code2, Database, Ticket } from "lucide-react";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
 
@@ -304,42 +308,14 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="admins" className="mt-6">
-            {role !== "owner" ? (
-              <Card>
-                <CardContent className="py-16 text-center">
-                  <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-                  <h3 className="text-lg font-semibold">Owner Only</h3>
-                  <p className="text-sm text-muted-foreground">Only the owner can manage administrator access.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader><CardTitle>Manage Administrators</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">User email</label>
-                    <Input
-                      type="email"
-                      placeholder="user@example.com"
-                      value={targetEmail}
-                      onChange={(e) => setTargetEmail(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={() => updateRole("admin")} disabled={acting}>
-                      {acting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      Promote to Admin
-                    </Button>
-                    <Button variant="destructive" onClick={() => updateRole("user")} disabled={acting}>
-                      Revoke Admin
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Owner accounts cannot be modified through this panel.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            <AdminManagement
+              role={role}
+              currentUserId={user?.id ?? null}
+              targetEmail={targetEmail}
+              setTargetEmail={setTargetEmail}
+              acting={acting}
+              updateRole={updateRole}
+            />
           </TabsContent>
         </Tabs>
 
