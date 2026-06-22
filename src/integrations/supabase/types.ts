@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_permissions: {
+        Row: {
+          core_script_access: boolean
+          db_modify: boolean
+          db_read: boolean
+          grant_admin_status: boolean
+          promo_create: boolean
+          promo_delete: boolean
+          promo_use: boolean
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          core_script_access?: boolean
+          db_modify?: boolean
+          db_read?: boolean
+          grant_admin_status?: boolean
+          promo_create?: boolean
+          promo_delete?: boolean
+          promo_use?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          core_script_access?: boolean
+          db_modify?: boolean
+          db_read?: boolean
+          grant_admin_status?: boolean
+          promo_create?: boolean
+          promo_delete?: boolean
+          promo_use?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_permissions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_permissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       api_keys: {
         Row: {
           created_at: string
@@ -224,6 +278,27 @@ export type Database = {
         Returns: Json
       }
       generate_my_api_key: { Args: never; Returns: Json }
+      get_admin_permissions: {
+        Args: { _user_id: string }
+        Returns: {
+          core_script_access: boolean
+          db_modify: boolean
+          db_read: boolean
+          grant_admin_status: boolean
+          promo_create: boolean
+          promo_delete: boolean
+          promo_use: boolean
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "admin_permissions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_api_usage_analytics: { Args: never; Returns: Json }
       get_system_analytics: { Args: never; Returns: Json }
       grant_flag_admin: {
@@ -237,9 +312,39 @@ export type Database = {
         }
         Returns: boolean
       }
+      list_admins: {
+        Args: never
+        Returns: {
+          created_at: string
+          email: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }[]
+      }
       reply_feedback: {
         Args: { _id: string; _reply: string; _status?: string }
         Returns: Json
+      }
+      set_admin_permission: {
+        Args: { _key: string; _user_id: string; _value: boolean }
+        Returns: {
+          core_script_access: boolean
+          db_modify: boolean
+          db_read: boolean
+          grant_admin_status: boolean
+          promo_create: boolean
+          promo_delete: boolean
+          promo_use: boolean
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "admin_permissions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       set_system_flag: {
         Args: { _channel?: string; _flag_name: string; _value: boolean }
