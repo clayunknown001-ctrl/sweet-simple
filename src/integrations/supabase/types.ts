@@ -14,225 +14,16 @@ export type Database = {
   }
   public: {
     Tables: {
-      api_keys: {
-        Row: {
-          created_at: string
-          developer_email: string
-          developer_id: string | null
-          environment: string
-          id: string
-          key_masked: string
-          key_token: string
-          monthly_quota: number
-          payment_status: string
-          requests_used: number
-          status: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          tier: string
-          token_quota: number
-          tokens_used: number
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          developer_email: string
-          developer_id?: string | null
-          environment?: string
-          id?: string
-          key_masked: string
-          key_token: string
-          monthly_quota?: number
-          payment_status?: string
-          requests_used?: number
-          status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          tier?: string
-          token_quota?: number
-          tokens_used?: number
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          developer_email?: string
-          developer_id?: string | null
-          environment?: string
-          id?: string
-          key_masked?: string
-          key_token?: string
-          monthly_quota?: number
-          payment_status?: string
-          requests_used?: number
-          status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          tier?: string
-          token_quota?: number
-          tokens_used?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "api_keys_developer_id_fkey"
-            columns: ["developer_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      feedback: {
-        Row: {
-          created_at: string
-          id: string
-          message: string
-          user_email: string
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          message: string
-          user_email: string
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          message?: string
-          user_email?: string
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "feedback_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          email: string
-          id: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          id: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          id?: string
-        }
-        Relationships: []
-      }
-      system_flags: {
-        Row: {
-          allowed_admin_emails: string[]
-          description: string | null
-          flag_name: string
-          id: number
-          production_value: boolean
-          staging_value: boolean
-          updated_at: string
-        }
-        Insert: {
-          allowed_admin_emails?: string[]
-          description?: string | null
-          flag_name: string
-          id?: number
-          production_value?: boolean
-          staging_value?: boolean
-          updated_at?: string
-        }
-        Update: {
-          allowed_admin_emails?: string[]
-          description?: string | null
-          flag_name?: string
-          id?: number
-          production_value?: boolean
-          staging_value?: boolean
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      user_roles: {
-        Row: {
-          created_at: string
-          id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      can_manage_flag: { Args: { _flag_name: string }; Returns: boolean }
-      delete_my_api_key: { Args: { _key_id: string }; Returns: Json }
-      generate_api_key: {
-        Args: {
-          _developer_email: string
-          _environment?: string
-          _tier?: string
-        }
-        Returns: Json
-      }
-      generate_my_api_key: { Args: never; Returns: Json }
-      get_api_usage_analytics: { Args: never; Returns: Json }
-      get_system_analytics: { Args: never; Returns: Json }
-      grant_flag_admin: {
-        Args: { _email: string; _flag_name: string }
-        Returns: Json
-      }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
-      revoke_my_api_key: { Args: { _key_id: string }; Returns: Json }
-      set_system_flag: {
-        Args: { _channel?: string; _flag_name: string; _value: boolean }
-        Returns: Json
-      }
-      set_user_role_by_email: {
-        Args: { _email: string; _role: Database["public"]["Enums"]["app_role"] }
-        Returns: Json
-      }
-      upgrade_my_api_key_tier: {
-        Args: {
-          _key_id: string
-          _stripe_customer_id?: string
-          _stripe_subscription_id?: string
-          _tier: string
-        }
-        Returns: Json
-      }
+      [_ in never]: never
     }
     Enums: {
-      app_role: "user" | "admin" | "owner"
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -359,8 +150,6 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {
-      app_role: ["user", "admin", "owner"],
-    },
+    Enums: {},
   },
 } as const
