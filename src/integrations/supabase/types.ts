@@ -84,27 +84,52 @@ export type Database = {
       }
       feedback: {
         Row: {
+          admin_reply: string | null
+          admin_responded_at: string | null
+          admin_responder_email: string | null
+          admin_responder_id: string | null
           created_at: string
           id: string
           message: string
+          source: string
+          status: string
           user_email: string
           user_id: string | null
         }
         Insert: {
+          admin_reply?: string | null
+          admin_responded_at?: string | null
+          admin_responder_email?: string | null
+          admin_responder_id?: string | null
           created_at?: string
           id?: string
           message: string
+          source?: string
+          status?: string
           user_email: string
           user_id?: string | null
         }
         Update: {
+          admin_reply?: string | null
+          admin_responded_at?: string | null
+          admin_responder_email?: string | null
+          admin_responder_id?: string | null
           created_at?: string
           id?: string
           message?: string
+          source?: string
+          status?: string
           user_email?: string
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "feedback_admin_responder_id_fkey"
+            columns: ["admin_responder_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "feedback_user_id_fkey"
             columns: ["user_id"]
@@ -211,6 +236,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      reply_feedback: {
+        Args: { _id: string; _reply: string; _status?: string }
+        Returns: Json
       }
       set_system_flag: {
         Args: { _channel?: string; _flag_name: string; _value: boolean }
