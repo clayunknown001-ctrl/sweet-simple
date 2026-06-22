@@ -212,7 +212,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      revoke_my_api_key: { Args: { _key_id: string }; Returns: Json }
       set_system_flag: {
         Args: { _channel?: string; _flag_name: string; _value: boolean }
         Returns: Json
