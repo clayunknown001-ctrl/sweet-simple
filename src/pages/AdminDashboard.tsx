@@ -134,7 +134,7 @@ export default function AdminDashboard() {
   }, []);
 
   const updateRole = async (newRole: "admin" | "user"): Promise<void> => {
-    if (!targetEmail.trim()) return toast.error("Enter an email");
+    if (!targetEmail.trim()) { toast.error("Enter an email"); return; }
     setActing(true);
     try {
       const { data, error } = await supabase.rpc("set_user_role_by_email", {
