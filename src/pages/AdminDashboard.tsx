@@ -133,7 +133,7 @@ export default function AdminDashboard() {
     load();
   }, []);
 
-  const updateRole = async (newRole: "admin" | "user") => {
+  const updateRole = async (newRole: "admin" | "user"): Promise<void> => {
     if (!targetEmail.trim()) return toast.error("Enter an email");
     setActing(true);
     try {
