@@ -5,8 +5,8 @@ const NavHistoryControls = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Hide on auth screen to avoid clashing with centered auth layout
-  if (location.pathname === "/auth") return null;
+  // Show only on inner pages; hide on home and auth
+  if (location.pathname === "/" || location.pathname === "/auth") return null;
 
   const btn =
     "h-9 w-9 inline-flex items-center justify-center rounded-lg border border-border/60 bg-background/70 backdrop-blur text-foreground/80 hover:text-foreground hover:bg-accent/40 hover:border-primary/40 transition-colors shadow-sm";
