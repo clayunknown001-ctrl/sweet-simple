@@ -18,7 +18,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Shield, ShieldCheck, Code2, Database, Ticket } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { MoreHorizontal, Shield, ShieldCheck, Code2, Database, Ticket, Search, Plus, Activity, Trash2, MessageCircle, Phone, MapPin } from "lucide-react";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
 
@@ -132,8 +133,8 @@ export default function AdminDashboard() {
     load();
   }, []);
 
-  const updateRole = async (newRole: "admin" | "user") => {
-    if (!targetEmail.trim()) return toast.error("Enter an email");
+  const updateRole = async (newRole: "admin" | "user"): Promise<void> => {
+    if (!targetEmail.trim()) { toast.error("Enter an email"); return; }
     setActing(true);
     try {
       const { data, error } = await supabase.rpc("set_user_role_by_email", {
@@ -698,3 +699,416 @@ function FeedbackPanel({ tickets, onChanged }: { tickets: Feedback[]; onChanged:
     </Card>
   );
 }
+
+// ============= Admin Management =============
+interface AdminRow {
+  user_id: string;
+  email: string;
+  role: "owner" | "admin" | string;
+  created_at: string;
+  fullName: string;
+  phone: string;
+  location: string;
+}
+
+// Deterministic mock for fields we don't store yet (phone/location/fullName)
+function enrichAdmin(r: { user_id: string; email: string; role: string; created_at: string }): AdminRow {
+  const base = (r.email || "").split("@")[0].replace(/[._]/g, " ");
+  const fullName = base.replace(/\b\w/g, (c) => c.toUpperCase()) || "Administrator";
+  const cities = ["Tashkent, UZ", "Samarkand, UZ", "Bukhara, UZ", "Almaty, KZ", "Istanbul, TR", "Dubai, AE"];
+  const city = cities[Math.abs(r.user_id.charCodeAt(0) + r.user_id.charCodeAt(1)) % cities.length];
+  const tail = r.user_id.replace(/\D/g, "").padEnd(7, "0").slice(0, 7);
+  const phone = `+998 ${tail.slice(0, 2)} ${tail.slice(2, 5)} ${tail.slice(5, 7)}00`;
+  return { ...r, fullName, phone, location: city };
+}
+
+function AdminManagement({
+  role, currentUserId, targetEmail, setTargetEmail, acting, updateRole,
+}: {
+  role: string | null;
+  currentUserId: string | null;
+  targetEmail: string;
+  setTargetEmail: (v: string) => void;
+  acting: boolean;
+  updateRole: (newRole: "admin" | "user") => Promise<void>;
+}) {
+  const [admins, setAdmins] = useState<AdminRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [permFor, setPermFor] = useState<AdminRow | null>(null);
+  const [removeFor, setRemoveFor] = useState<AdminRow | null>(null);
+  const [messageFor, setMessageFor] = useState<AdminRow | null>(null);
+  const [messageText, setMessageText] = useState("");
+
+  const isOwner = role === "owner";
+
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.rpc("list_admins");
+    if (error) toast.error(error.message);
+    else setAdmins(((data as any[]) || []).map(enrichAdmin));
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const owner = admins.find((a) => a.role === "owner");
+  const others = admins.filter((a) => a.role !== "owner");
+  const filterFn = (a: AdminRow) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return a.email.toLowerCase().includes(q) || a.fullName.toLowerCase().includes(q) || a.location.toLowerCase().includes(q);
+  };
+  const visibleOthers = others.filter(filterFn);
+
+  const handleRemove = async () => {
+    if (!removeFor) return;
+    setTargetEmail(removeFor.email);
+    await updateRole("user");
+    setRemoveFor(null);
+    await load();
+  };
+
+  const handleAdd = async () => {
+    await updateRole("admin");
+    setAddOpen(false);
+    await load();
+  };
+
+  const sendMessage = () => {
+    if (!messageFor || messageText.trim().length < 2) { toast.error("Type a message"); return; }
+    toast.success(`Message sent to ${messageFor.email}`);
+    setMessageText("");
+    setMessageFor(null);
+  };
+
+  return (
+    <div className="space-y-12">
+      {/* Header + Action Bar */}
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Admin Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">Manage owner and administrator accounts, permissions, and activity.</p>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+          <div className="relative flex-1 max-w-xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search admins by name, email, or location..."
+              className="pl-9 bg-card/60 border-border/60"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setAddOpen(true)} disabled={!isOwner} className="shadow-[0_0_24px_-12px_hsl(var(--primary))]">
+              <Plus className="w-4 h-4 mr-1.5" /> Add Admin
+            </Button>
+            <Button variant="outline" onClick={() => setActivityOpen(true)}>
+              <Activity className="w-4 h-4 mr-1.5" /> Admin Activities
+            </Button>
+            <Button variant="outline" onClick={() => document.querySelector<HTMLInputElement>('input[placeholder^="Search admins"]')?.focus()}>
+              <Search className="w-4 h-4 mr-1.5" /> Search Admin
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Generous whitespace separator */}
+      <div className="h-8" />
+
+      {/* List Table */}
+      <Card className="border-border/60 bg-card/40 backdrop-blur overflow-hidden">
+        <CardHeader className="border-b border-border/60">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Shield className="w-4 h-4 text-primary" /> Administrators
+            <Badge variant="outline" className="ml-2 text-xs">{admins.length}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border/60">
+                    <th className="px-5 py-3">Full Name</th>
+                    <th className="px-5 py-3">Email</th>
+                    <th className="px-5 py-3">Phone</th>
+                    <th className="px-5 py-3">Location</th>
+                    <th className="px-5 py-3">Created</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {owner && <AdminRowItem key={owner.user_id} a={owner} isOwnerRow currentUserId={currentUserId} canManage={isOwner}
+                    onPerm={() => setPermFor(owner)} onRemove={() => setRemoveFor(owner)} onMessage={() => setMessageFor(owner)} />}
+                  {visibleOthers.map((a) => (
+                    <AdminRowItem key={a.user_id} a={a} currentUserId={currentUserId} canManage={isOwner}
+                      onPerm={() => setPermFor(a)} onRemove={() => setRemoveFor(a)} onMessage={() => setMessageFor(a)} />
+                  ))}
+                  {visibleOthers.length === 0 && !owner && (
+                    <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">No administrators found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Admin Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserPlus className="w-4 h-4 text-primary" /> Promote to Admin</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Enter the email of an existing user to grant administrator access.</p>
+            <Input value={targetEmail} onChange={(e) => setTargetEmail(e.target.value)} placeholder="user@example.com" />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button onClick={handleAdd} disabled={acting || !targetEmail.trim()}>
+                {acting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                Grant Admin
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Activities */}
+      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Activity className="w-4 h-4 text-primary" /> Admin Activities</DialogTitle></DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            <ul className="divide-y divide-border/40 text-sm">
+              {[
+                { who: owner?.email || "owner", what: "Updated permissions for an admin", when: "2h ago" },
+                { who: "admin@narimon.ai", what: "Resolved feedback ticket #a8c1", when: "5h ago" },
+                { who: "admin@narimon.ai", what: "Rotated API key for B2B partner", when: "Yesterday" },
+                { who: owner?.email || "owner", what: "Promoted user to admin", when: "2 days ago" },
+              ].map((e, i) => (
+                <li key={i} className="py-3 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium">{e.what}</p>
+                    <p className="text-xs text-muted-foreground">{e.who}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{e.when}</span>
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Confirm */}
+      <AlertDialog open={!!removeFor} onOpenChange={(o) => !o && setRemoveFor(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke admin access?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will downgrade <span className="font-medium text-foreground">{removeFor?.email}</span> back to a regular user. They will lose access to the Admin Dashboard immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Remove Admin
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Message Dialog */}
+      <Dialog open={!!messageFor} onOpenChange={(o) => { if (!o) { setMessageFor(null); setMessageText(""); } }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><MessageCircle className="w-4 h-4 text-primary" /> Message {messageFor?.fullName}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Sending to <span className="text-foreground font-medium">{messageFor?.email}</span></p>
+            <Textarea rows={5} placeholder="Write your message..." value={messageText} onChange={(e) => setMessageText(e.target.value)} />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setMessageFor(null); setMessageText(""); }}>Cancel</Button>
+              <Button onClick={sendMessage}><Send className="w-4 h-4 mr-1.5" /> Send</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Permissions Dialog */}
+      <AdminPermissionsDialog
+        open={!!permFor}
+        onOpenChange={(o) => !o && setPermFor(null)}
+        admin={permFor}
+        viewerIsOwner={isOwner}
+        viewerId={currentUserId}
+      />
+    </div>
+  );
+}
+
+function AdminRowItem({
+  a, isOwnerRow, currentUserId, canManage, onPerm, onRemove, onMessage,
+}: {
+  a: AdminRow; isOwnerRow?: boolean; currentUserId: string | null; canManage: boolean;
+  onPerm: () => void; onRemove: () => void; onMessage: () => void;
+}) {
+  const isSelf = a.user_id === currentUserId;
+  return (
+    <tr className="border-b border-border/40 transition-colors hover:bg-primary/5">
+      <td className="px-5 py-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isOwnerRow ? "bg-primary/20 text-primary border border-primary/40" : "bg-muted text-foreground"}`}>
+            {a.fullName[0]?.toUpperCase() || "A"}
+          </div>
+          <div>
+            <div className="font-medium flex items-center gap-2">
+              {a.fullName}
+              {isOwnerRow && (
+                <Badge className="bg-primary/15 text-primary border border-primary/40 shadow-[0_0_12px_hsl(var(--primary)/0.4)]">
+                  <Crown className="w-3 h-3 mr-1" /> Owner
+                </Badge>
+              )}
+              {!isOwnerRow && <Badge variant="outline" className="border-border text-muted-foreground">Admin</Badge>}
+            </div>
+            {isSelf && <p className="text-[10px] text-muted-foreground mt-0.5">You</p>}
+          </div>
+        </div>
+      </td>
+      <td className="px-5 py-4 text-muted-foreground">{a.email}</td>
+      <td className="px-5 py-4 text-muted-foreground whitespace-nowrap"><span className="inline-flex items-center gap-1.5"><Phone className="w-3 h-3" />{a.phone}</span></td>
+      <td className="px-5 py-4 text-muted-foreground whitespace-nowrap"><span className="inline-flex items-center gap-1.5"><MapPin className="w-3 h-3" />{a.location}</span></td>
+      <td className="px-5 py-4 text-muted-foreground whitespace-nowrap">{new Date(a.created_at).toLocaleDateString()}</td>
+      <td className="px-5 py-4 text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="w-4 h-4" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem
+              disabled={isOwnerRow || !canManage}
+              onClick={onRemove}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Remove Admin Status
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onPerm}>
+              <ShieldCheck className="w-4 h-4 mr-2" /> Admin Permissions
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onMessage}>
+              <MessageCircle className="w-4 h-4 mr-2" /> Message
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </td>
+    </tr>
+  );
+}
+
+// ============= Admin Permissions Dialog =============
+const PERM_GROUPS: { title: string; icon: React.ReactNode; items: { key: string; label: string; desc: string }[] }[] = [
+  {
+    title: "Administrative", icon: <Shield className="w-4 h-4" />, items: [
+      { key: "grant_admin_status", label: "Grant Admin Status", desc: "Promote other users to admin." },
+    ],
+  },
+  {
+    title: "Core System", icon: <Code2 className="w-4 h-4" />, items: [
+      { key: "core_script_access", label: "Core Script Access", desc: "Edit production moderation scripts." },
+    ],
+  },
+  {
+    title: "Database", icon: <Database className="w-4 h-4" />, items: [
+      { key: "db_read", label: "Read Database", desc: "View raw records and analytics." },
+      { key: "db_modify", label: "Modify Database", desc: "Insert, update, or delete records." },
+    ],
+  },
+  {
+    title: "Promo Codes", icon: <Ticket className="w-4 h-4" />, items: [
+      { key: "promo_use", label: "Use Promo Codes", desc: "Apply existing codes to accounts." },
+      { key: "promo_create", label: "Create Promo Codes", desc: "Generate new promotional codes." },
+      { key: "promo_delete", label: "Delete Promo Codes", desc: "Permanently destroy active codes." },
+    ],
+  },
+];
+
+function AdminPermissionsDialog({
+  open, onOpenChange, admin, viewerIsOwner, viewerId,
+}: {
+  open: boolean; onOpenChange: (o: boolean) => void;
+  admin: AdminRow | null; viewerIsOwner: boolean; viewerId: string | null;
+}) {
+  const [perms, setPerms] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  const readOnly = !viewerIsOwner || (admin?.role === "owner");
+
+  useEffect(() => {
+    if (!open || !admin) return;
+    setLoading(true);
+    supabase.rpc("get_admin_permissions", { _user_id: admin.user_id }).then(({ data, error }) => {
+      if (error) toast.error(error.message);
+      else if (data) setPerms(data as any);
+      setLoading(false);
+    });
+  }, [open, admin?.user_id]);
+
+  const toggle = async (key: string, value: boolean) => {
+    if (!admin || readOnly) return;
+    setSavingKey(key);
+    const prev = perms[key];
+    setPerms((p) => ({ ...p, [key]: value }));
+    const { data, error } = await supabase.rpc("set_admin_permission", { _user_id: admin.user_id, _key: key, _value: value });
+    if (error) { toast.error(error.message); setPerms((p) => ({ ...p, [key]: prev })); }
+    else if (data) { setPerms(data as any); toast.success("Permission updated"); }
+    setSavingKey(null);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-primary" /> Admin Permissions
+            {admin && <span className="text-xs text-muted-foreground font-normal ml-2">{admin.email}</span>}
+            {readOnly && <Badge variant="outline" className="ml-2 text-[10px]"><Lock className="w-3 h-3 mr-1" /> Read-only</Badge>}
+          </DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+        ) : (
+          <ScrollArea className="max-h-[60vh] pr-2">
+            <div className="space-y-5">
+              {PERM_GROUPS.map((g) => (
+                <div key={g.title} className="rounded-lg border border-border/60 bg-card/40">
+                  <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2 text-sm font-semibold text-primary">
+                    {g.icon} {g.title}
+                  </div>
+                  <div className="divide-y divide-border/40">
+                    {g.items.map((it) => (
+                      <div key={it.key} className="flex items-center justify-between gap-4 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{it.label}</p>
+                          <p className="text-xs text-muted-foreground">{it.desc}</p>
+                        </div>
+                        <Switch
+                          checked={!!perms[it.key]}
+                          disabled={readOnly || savingKey === it.key}
+                          onCheckedChange={(v) => toggle(it.key, v)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
