@@ -16,6 +16,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import { AuthProvider } from "./hooks/useAuth";
 import { RequireAuth } from "./components/RequireAuth";
 import NavHistoryControls from "./components/NavHistoryControls";
+import { ProUpgradeProvider } from "./components/admin/ProUpgradeModal";
 
 const queryClient = new QueryClient();
 
@@ -26,34 +27,36 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <NavHistoryControls />
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route
-              path="/admin-dashboard"
-              element={
-                <RequireAuth roles={["admin", "owner"]}>
-                  <AdminDashboard />
-                </RequireAuth>
-              }
-            />
-            <Route path="/text-analysis" element={<TextAnalysis />} />
-            <Route path="/image-analysis" element={<ImageAnalysis />} />
-            <Route path="/video-analysis" element={<VideoAnalysis />} />
-            <Route path="/api" element={<Api />} />
-            <Route path="/api-docs" element={<Api />} />
-            <Route
-              path="/extension"
-              element={
-                <RequireAuth roles={["admin", "owner"]}>
-                  <Extension />
-                </RequireAuth>
-              }
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <SafeNetGuard />
+          <ProUpgradeProvider>
+            <NavHistoryControls />
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route
+                path="/admin-dashboard"
+                element={
+                  <RequireAuth roles={["admin", "owner"]}>
+                    <AdminDashboard />
+                  </RequireAuth>
+                }
+              />
+              <Route path="/text-analysis" element={<TextAnalysis />} />
+              <Route path="/image-analysis" element={<ImageAnalysis />} />
+              <Route path="/video-analysis" element={<VideoAnalysis />} />
+              <Route path="/api" element={<Api />} />
+              <Route path="/api-docs" element={<Api />} />
+              <Route
+                path="/extension"
+                element={
+                  <RequireAuth roles={["admin", "owner"]}>
+                    <Extension />
+                  </RequireAuth>
+                }
+              />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <SafeNetGuard />
+          </ProUpgradeProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

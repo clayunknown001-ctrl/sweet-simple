@@ -32,7 +32,7 @@ export function ProUpgradeButton() {
       <span className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
             style={{ background: "radial-gradient(120% 80% at 50% 0%, hsl(var(--neon-glow)/0.25), transparent 70%)" }} />
       <Sparkles className="w-4 h-4 text-neon relative z-10" />
-      <span className="relative z-10">Pro Upgrade</span>
+      <span className="relative z-10">Upgrade</span>
     </button>
   );
 }
