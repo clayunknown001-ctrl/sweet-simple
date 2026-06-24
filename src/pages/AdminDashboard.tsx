@@ -289,23 +289,15 @@ function AdminDashboardInner() {
               </div>
             </section>
 
-            {/* Spacer + Database Storage */}
+            {/* Spacer + Database Storage Breakdown */}
             <div className="pt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><HardDrive className="w-5 h-5" /> Database Storage</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>{mb(analytics?.db_storage_used_bytes ?? 0)} used</span>
-                    <span className="text-muted-foreground">/ {mb(analytics?.db_storage_limit_bytes ?? 0)}</span>
-                  </div>
-                  <Progress value={storagePct} />
-                  <p className="text-xs text-muted-foreground mt-2">{storagePct.toFixed(2)}% of quota</p>
-                </CardContent>
-              </Card>
+              <StorageBreakdown
+                usedBytes={analytics?.db_storage_used_bytes ?? 0}
+                limitBytes={analytics?.db_storage_limit_bytes ?? 0}
+              />
             </div>
           </TabsContent>
+
 
 
           <TabsContent value="feedback" className="mt-6">
