@@ -93,22 +93,22 @@ serve(async (req) => {
     const body = await req.json();
     const { image_url, image_base64, fast } = body;
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
       // Fail closed
-      return new Response(JSON.stringify({ should_block: true, error: "Gemini API key not configured" }), {
+      return new Response(JSON.stringify({ should_block: true, error: "AI gateway not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const systemPrompt = YOUTH_PROTECTION_PROMPT;
-    const model = fast ? "gemini-1.5-flash" : "gemini-1.5-pro";
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    const model = fast ? "google/gemini-2.5-flash-lite" : "google/gemini-2.5-flash";
+    const gatewayUrl = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-    let imagePart: any;
+    let imageDataUrl: string;
     if (image_base64) {
       const mediaType = image_base64.startsWith("/9j/") ? "image/jpeg" : "image/png";
-      imagePart = { inlineData: { mimeType: mediaType, data: image_base64 } };
+      imageDataUrl = `data:${mediaType};base64,${image_base64}`;
     } else if (image_url) {
       const safety = isSafeImageUrl(image_url);
       if (!safety.ok) {
@@ -119,7 +119,7 @@ serve(async (req) => {
       try {
         const imgResp = await fetch(image_url, {
           headers: { "User-Agent": "Mozilla/5.0 SafeNet-Filter/1.0" },
-          redirect: "error", // do not follow redirects (could redirect to internal)
+          redirect: "error",
           signal: AbortSignal.timeout(5000),
         });
         if (!imgResp.ok) throw new Error(`Image fetch failed: ${imgResp.status}`);
@@ -134,9 +134,8 @@ serve(async (req) => {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        imagePart = { inlineData: { mimeType: contentType.split(";")[0], data: base64Data } };
+        imageDataUrl = `data:${contentType.split(";")[0]};base64,${base64Data}`;
       } catch (e) {
-        // Fail closed
         return new Response(JSON.stringify({ should_block: true, error: "Image fetch failed" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -147,19 +146,31 @@ serve(async (req) => {
       });
     }
 
-    const geminiBody = {
-      contents: [{ parts: [{ text: systemPrompt }, imagePart] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 50, responseMimeType: "application/json" },
+    const gatewayBody = {
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: systemPrompt },
+            { type: "image_url", image_url: { url: imageDataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 100,
     };
 
-    const geminiResp = await fetch(geminiUrl, {
+    const geminiResp = await fetch(gatewayUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiBody),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+      },
+      body: JSON.stringify(gatewayBody),
     });
 
     if (geminiResp.status === 429) {
-      // Fail closed on rate limits
       return new Response(JSON.stringify({ should_block: true, error: "rate_limit" }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -167,15 +178,15 @@ serve(async (req) => {
 
     if (!geminiResp.ok) {
       const errText = await geminiResp.text();
-      console.error("Gemini error:", errText);
-      // Fail closed
-      return new Response(JSON.stringify({ should_block: true, error: "Gemini API error" }), {
+      console.error("AI gateway error:", errText);
+      return new Response(JSON.stringify({ should_block: true, error: "AI gateway error" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const geminiData = await geminiResp.json();
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const rawText = geminiData?.choices?.[0]?.message?.content || "{}";
+
 
     let result: any = { should_block: true }; // default fail-closed
     try {
