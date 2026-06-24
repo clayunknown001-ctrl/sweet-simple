@@ -227,7 +227,7 @@ export default function ImageAnalysis() {
 
                     <AnalysisCard title="Ob'ektlar" icon={<Eye className="w-5 h-5" />}>
                       <div className="flex flex-wrap gap-2">
-                        {result.objects.map((o) => (
+                        {(result.objects ?? []).map((o) => (
                           <Badge key={o} variant="secondary" className="font-mono text-xs bg-cyan/10 text-cyan border-cyan/20">{o}</Badge>
                         ))}
                       </div>
@@ -235,7 +235,7 @@ export default function ImageAnalysis() {
 
                     <AnalysisCard title="Ranglar" icon={<Palette className="w-5 h-5" />}>
                       <div className="flex flex-wrap gap-2">
-                        {result.colors.map((c) => (
+                        {(result.colors ?? []).map((c) => (
                           <Badge key={c} variant="outline" className="font-mono text-xs">{c}</Badge>
                         ))}
                       </div>
@@ -243,7 +243,8 @@ export default function ImageAnalysis() {
 
                     <AnalysisCard title="Teglar" icon={<Tag className="w-5 h-5" />}>
                       <div className="flex flex-wrap gap-2">
-                        {result.tags.map((t) => (
+                        {(result.tags ?? []).map((t) => (
+
                           <Badge key={t} variant="secondary" className="font-mono text-xs bg-primary/10 text-primary border-primary/20">{t}</Badge>
                         ))}
                       </div>
