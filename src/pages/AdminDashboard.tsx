@@ -1112,3 +1112,120 @@ function AdminPermissionsDialog({
   );
 }
 
+
+export default function AdminDashboard() {
+  return (
+    <ProUpgradeProvider>
+      <AdminDashboardInner />
+    </ProUpgradeProvider>
+  );
+}
+
+function RecommendationCard() {
+  const { open } = useUpgradeModal();
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div
+      className="relative flex items-start gap-3 rounded-xl p-4 pr-10
+        bg-white/[0.03] backdrop-blur-xl
+        border border-white/10
+        animate-in fade-in slide-in-from-bottom-3 duration-500"
+    >
+      <div className="rounded-lg bg-neon/15 text-neon p-2 shrink-0">
+        <Sparkles className="w-4 h-4" />
+      </div>
+      <div className="text-sm leading-relaxed">
+        <span className="font-medium text-foreground">Pro tip:</span>{" "}
+        <span className="text-muted-foreground">Your logs are growing fast.</span>{" "}
+        <button
+          onClick={open}
+          className="text-neon hover:underline underline-offset-2 font-medium"
+        >
+          Switch to Pro to optimize storage →
+        </button>
+      </div>
+      <button
+        onClick={() => setDismissed(true)}
+        className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md"
+        aria-label="Dismiss"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+const STORAGE_TABLES = [
+  { name: "Users", share: 0.18, color: "hsl(var(--neon-glow))" },
+  { name: "Logs", share: 0.42, color: "hsl(var(--cyan))" },
+  { name: "Media", share: 0.26, color: "hsl(var(--purple))" },
+  { name: "Analytics", share: 0.14, color: "hsl(var(--primary))" },
+];
+
+function StorageBreakdown({ usedBytes, limitBytes }: { usedBytes: number; limitBytes: number }) {
+  const pct = limitBytes > 0 ? Math.min(100, (usedBytes / limitBytes) * 100) : 0;
+  const fmtSize = (b: number) => {
+    if (b >= 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + " MB";
+    if (b >= 1024) return (b / 1024).toFixed(1) + " KB";
+    return b + " B";
+  };
+  return (
+    <Card className="border-border/60 bg-card/60 backdrop-blur">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <HardDrive className="w-5 h-5 text-primary" /> Storage Usage Breakdown
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div>
+          <div className="flex justify-between text-sm mb-2">
+            <span className="font-medium">{fmtSize(usedBytes)} used</span>
+            <span className="text-muted-foreground">/ {fmtSize(limitBytes)}</span>
+          </div>
+          <div className="relative h-2 w-full rounded-full bg-muted/40 overflow-hidden">
+            <div className="absolute inset-y-0 left-0 flex">
+              {STORAGE_TABLES.map((t) => (
+                <div
+                  key={t.name}
+                  style={{ width: `${pct * t.share}%`, background: t.color }}
+                  className="h-full transition-all"
+                />
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">{pct.toFixed(2)}% of quota</p>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {STORAGE_TABLES.map((t) => {
+            const tBytes = usedBytes * t.share;
+            return (
+              <div
+                key={t.name}
+                className="rounded-lg border border-border/60 bg-background/40 p-3 hover:border-primary/40 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: t.color, boxShadow: `0 0 8px ${t.color}` }}
+                    />
+                    <span className="text-sm font-medium text-foreground">{t.name}</span>
+                  </div>
+                  <CheckCircle2 className="w-3 h-3 text-muted-foreground" />
+                </div>
+                <p className="text-lg font-semibold tracking-tight text-foreground">
+                  {fmtSize(tBytes)}
+                </p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+                  {(t.share * 100).toFixed(0)}% of used
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
