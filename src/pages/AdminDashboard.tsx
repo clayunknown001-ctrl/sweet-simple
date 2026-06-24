@@ -94,7 +94,7 @@ const MOCK_SUBSCRIBERS: Subscriber[] = [
   { id: "s7", name: "Jasur Komilov", email: "jasur@example.com", joined: "2026-06-20" },
 ];
 
-export default function AdminDashboard() {
+function AdminDashboardInner() {
   const { role, signOut, user } = useAuth();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
