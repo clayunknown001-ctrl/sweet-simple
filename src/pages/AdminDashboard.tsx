@@ -22,7 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { MoreHorizontal, Shield, ShieldCheck, Code2, Database, Ticket, Search, Plus, Activity, Trash2, MessageCircle, Phone, MapPin } from "lucide-react";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
-import { ProUpgradeProvider, ProUpgradeButton, useUpgradeModal } from "@/components/admin/ProUpgradeModal";
+import { useUpgradeModal } from "@/components/admin/ProUpgradeModal";
 import { Sparkles, X } from "lucide-react";
 
 interface Analytics {
@@ -178,7 +178,6 @@ function AdminDashboardInner() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <ProUpgradeButton />
             <Button variant="outline" onClick={signOut}>
               <LogOut className="w-4 h-4 mr-2" /> Sign Out
             </Button>
@@ -1114,11 +1113,7 @@ function AdminPermissionsDialog({
 
 
 export default function AdminDashboard() {
-  return (
-    <ProUpgradeProvider>
-      <AdminDashboardInner />
-    </ProUpgradeProvider>
-  );
+  return <AdminDashboardInner />;
 }
 
 function RecommendationCard() {

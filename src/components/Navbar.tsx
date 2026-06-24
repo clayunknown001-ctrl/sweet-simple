@@ -3,6 +3,7 @@ import { Brain, FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LayoutDash
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { ProUpgradeButton } from "@/components/admin/ProUpgradeModal";
 
 interface NavItem {
   path: string;
@@ -84,6 +85,10 @@ export default function Navbar() {
               </Link>
             );
           })}
+
+          <div className="ml-1">
+            <ProUpgradeButton />
+          </div>
 
           {session ? (
             (role === "admin" || role === "owner") && (
