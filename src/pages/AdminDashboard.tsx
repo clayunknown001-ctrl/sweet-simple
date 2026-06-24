@@ -177,10 +177,16 @@ function AdminDashboardInner() {
               Signed in as {user?.email} · Role: <span className="font-semibold text-primary">{role}</span>
             </p>
           </div>
-          <Button variant="outline" onClick={signOut}>
-            <LogOut className="w-4 h-4 mr-2" /> Sign Out
-          </Button>
+          <div className="flex items-center gap-3">
+            <ProUpgradeButton />
+            <Button variant="outline" onClick={signOut}>
+              <LogOut className="w-4 h-4 mr-2" /> Sign Out
+            </Button>
+          </div>
         </div>
+
+        <RecommendationCard />
+
 
         <Tabs defaultValue="overview">
           <TabsList className="flex-wrap h-auto">
