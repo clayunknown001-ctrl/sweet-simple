@@ -1,0 +1,15 @@
+GRANT EXECUTE ON FUNCTION public.generate_my_api_key() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_my_api_key(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.upgrade_my_api_key_tier(uuid, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_user_role_by_email(text, app_role) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_system_analytics() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_api_usage_analytics() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.list_admins() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_permissions(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_admin_permission(uuid, text, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_system_flag(text, boolean, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.grant_flag_admin(text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_manage_flag(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.has_role(uuid, app_role) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.generate_api_key(text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reply_feedback(uuid, text, text) TO authenticated;
