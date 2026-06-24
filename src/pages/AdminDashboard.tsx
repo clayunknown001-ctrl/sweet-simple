@@ -22,6 +22,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { MoreHorizontal, Shield, ShieldCheck, Code2, Database, Ticket, Search, Plus, Activity, Trash2, MessageCircle, Phone, MapPin } from "lucide-react";
 import CoreScriptConfig from "@/components/admin/CoreScriptConfig";
 import ApiKeysPanel from "@/components/admin/ApiKeysPanel";
+import { ProUpgradeProvider, ProUpgradeButton, useUpgradeModal } from "@/components/admin/ProUpgradeModal";
+import { Sparkles, X } from "lucide-react";
 
 interface Analytics {
   total_users_count: number;
