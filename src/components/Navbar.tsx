@@ -57,23 +57,13 @@ export default function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex items-center justify-between h-16 px-4">
         <div className="flex items-center gap-3">
-          {session ? (
-            (role === "admin" || role === "owner") && (
-              <Link
-                to="/admin-dashboard"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-cyan border border-cyan/30 bg-cyan/5 hover:bg-cyan/10 transition-colors"
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                <span className="hidden md:inline">Admin Panel</span>
-              </Link>
-            )
-          ) : (
+          {session && (role === "admin" || role === "owner") && (
             <Link
-              to="/auth"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+              to="/admin-dashboard"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-cyan border border-cyan/30 bg-cyan/5 hover:bg-cyan/10 transition-colors"
             >
-              <LogIn className="w-4 h-4" />
-              <span className="hidden md:inline">Kirish</span>
+              <LayoutDashboard className="w-4 h-4" />
+              <span className="hidden md:inline">Admin Panel</span>
             </Link>
           )}
 
@@ -111,7 +101,18 @@ export default function Navbar() {
           <div className="ml-1">
             <ProUpgradeButton />
           </div>
+
+          {!session && (
+            <Link
+              to="/auth"
+              className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden md:inline">Kirish</span>
+            </Link>
+          )}
         </div>
+
       </div>
     </nav>
   );
