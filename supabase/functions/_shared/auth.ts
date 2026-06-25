@@ -49,17 +49,3 @@ export async function authenticateRequest(req: Request): Promise<AuthResult> {
   return { ok: true, kind: "jwt", userId: data.claims.sub as string };
 }
 
-export async function incrementApiKeyUsage(keyId: string, tokens: number) {
-  try {
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { auth: { persistSession: false } },
-    );
-    await admin.rpc("increment_api_key_usage", { _key_id: keyId, _tokens: tokens })
-      .then(() => {})
-      .catch(() => {});
-  } catch {
-    // best-effort
-  }
-}
