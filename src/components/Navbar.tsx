@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LayoutDashboard } from "lucide-react";
+import { Brain, FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LogOut, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
