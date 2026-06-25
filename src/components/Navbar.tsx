@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LayoutDashboard } from "lucide-react";
+import { Brain, FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LogOut, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,7 +102,7 @@ export default function Navbar() {
             <ProUpgradeButton />
           </div>
 
-          {!session && (
+          {!session ? (
             <Link
               to="/auth"
               className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
@@ -110,6 +110,17 @@ export default function Navbar() {
               <LogIn className="w-4 h-4" />
               <span className="hidden md:inline">Kirish</span>
             </Link>
+          ) : (
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                window.location.href = "/auth";
+              }}
+              className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden md:inline">Chiqish</span>
+            </button>
           )}
         </div>
 
