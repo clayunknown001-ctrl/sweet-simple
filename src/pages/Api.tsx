@@ -206,32 +206,6 @@ export default function Api() {
           </CardContent>
         </Card>
 
-        {/* Pricing teaser */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <PlanCard
-            icon={<Zap className="w-5 h-5" />}
-            name="Free Trial"
-            price="$0"
-            tokens="5,000 tokens"
-            tagline="Test uchun. 20 daqiqalik kunda 3-4 kun yetadi."
-            highlight={false}
-          />
-          <PlanCard
-            icon={<Crown className="w-5 h-5 text-amber-400" />}
-            name="Pro Monthly"
-            price="$20/oy"
-            tokens="2,000,000 tokens"
-            tagline="Har oy yangilanadi. Ishlab chiqaruvchilar uchun ideal."
-            highlight
-          />
-          <PlanCard
-            icon={<InfinityIcon className="w-5 h-5 text-primary" />}
-            name="Pay-as-you-go"
-            price="Hisoblangan"
-            tokens="Cheksiz"
-            tagline="1M token = ~$8. Faqat ishlatganingiz uchun to'laysiz."
-          />
-        </div>
 
         {/* Docs */}
         <Card>

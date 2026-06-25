@@ -17,6 +17,7 @@ import { AuthProvider } from "./hooks/useAuth";
 import { RequireAuth } from "./components/RequireAuth";
 import NavHistoryControls from "./components/NavHistoryControls";
 import { ProUpgradeProvider } from "./components/admin/ProUpgradeModal";
+import GlobalProTip from "./components/GlobalProTip";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
             <SafeNetGuard />
+            <GlobalProTip />
           </ProUpgradeProvider>
         </AuthProvider>
       </BrowserRouter>

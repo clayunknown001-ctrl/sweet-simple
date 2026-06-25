@@ -184,7 +184,8 @@ function AdminDashboardInner() {
           </div>
         </div>
 
-        <RecommendationCard />
+
+
 
 
         <Tabs defaultValue="overview">
