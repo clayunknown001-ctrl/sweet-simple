@@ -81,7 +81,8 @@ Deno.serve(async (req) => {
     if (!stripeRes.ok) return json({ error: session?.error?.message ?? "Stripe error" }, 500);
     return json({ url: session.url, id: session.id }, 200);
   } catch (e) {
-    return json({ error: (e as Error).message }, 500);
+    console.error("create-stripe-checkout error:", e);
+    return json({ error: "Internal server error" }, 500);
   }
 });
 
