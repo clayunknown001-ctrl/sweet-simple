@@ -56,16 +56,38 @@ export default function Navbar() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex items-center justify-between h-16 px-4">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="relative">
-            <Brain className="w-8 h-8 text-primary animate-pulse-glow" />
-            <div className="absolute inset-0 blur-lg bg-primary/30 rounded-full" />
-          </div>
-          <span className="text-xl font-bold tracking-tight">
-            <span className="text-primary text-glow">AI</span>
-            <span className="text-foreground"> Content Insights</span>
-          </span>
-        </Link>
+        <div className="flex items-center gap-3">
+          {session ? (
+            (role === "admin" || role === "owner") && (
+              <Link
+                to="/admin-dashboard"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-cyan border border-cyan/30 bg-cyan/5 hover:bg-cyan/10 transition-colors"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span className="hidden md:inline">Admin Panel</span>
+              </Link>
+            )
+          ) : (
+            <Link
+              to="/auth"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden md:inline">Kirish</span>
+            </Link>
+          )}
+
+          <Link to="/" className="flex items-center gap-2 group">
+            <div className="relative">
+              <Brain className="w-8 h-8 text-primary animate-pulse-glow" />
+              <div className="absolute inset-0 blur-lg bg-primary/30 rounded-full" />
+            </div>
+            <span className="text-xl font-bold tracking-tight hidden sm:inline">
+              <span className="text-primary text-glow">AI</span>
+              <span className="text-foreground"> Content Insights</span>
+            </span>
+          </Link>
+        </div>
 
         <div className="flex items-center gap-1">
           {items.map(({ path, label, icon: Icon }) => {
@@ -89,26 +111,6 @@ export default function Navbar() {
           <div className="ml-1">
             <ProUpgradeButton />
           </div>
-
-          {session ? (
-            (role === "admin" || role === "owner") && (
-              <Link
-                to="/admin-dashboard"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-cyan hover:bg-cyan/10"
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                <span className="hidden md:inline">Admin</span>
-              </Link>
-            )
-          ) : (
-            <Link
-              to="/auth"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary hover:bg-primary/10"
-            >
-              <LogIn className="w-4 h-4" />
-              <span className="hidden md:inline">Kirish</span>
-            </Link>
-          )}
         </div>
       </div>
     </nav>
