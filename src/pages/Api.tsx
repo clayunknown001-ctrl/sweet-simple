@@ -123,14 +123,8 @@ export default function Api() {
         return;
       }
       if ((data as any)?.placeholder) {
-        toast.info("Stripe hali ulanmagan. Demo rejimda tierni yangilaymiz.");
-        const { error: upErr } = await supabase.rpc("upgrade_my_api_key_tier", {
-          _key_id: key.id, _tier: tier,
-        });
-        if (upErr) throw upErr;
-        toast.success(`${TIER_LABEL[tier]} faollashtirildi (demo).`);
+        toast.info("Stripe hali ulanmagan. To'lov tizimi sozlanguncha tier yangilanmaydi.");
         setBillingKey(null);
-        await load();
       }
     } catch (e: any) {
       toast.error(e.message ?? "Checkout xato");
