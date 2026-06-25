@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { runGate } from "../_shared/moderation/gate.ts";
 import { hashContent, getCached, setCached } from "../_shared/moderation/memory.ts";
 import { buildLocalVideoAnalysis, analyzeUrlLocal } from "../_shared/moderation/local-engine.ts";
+import { authenticateRequest } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
