@@ -15,6 +15,7 @@ export default function Navbar() {
   const location = useLocation();
   const { session, role, user } = useAuth();
   const [hasRadarAccess, setHasRadarAccess] = useState(false);
+  const hasAdminAccess = !!session && (role === "admin" || role === "owner");
 
   // Brauzer Radar: owner OR an admin listed in any flag's allowed_admin_emails
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function Navbar() {
             </span>
           </Link>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto">
             {items.map(({ path, label, icon: Icon }) => {
               const active = location.pathname === path;
               return (
@@ -114,21 +115,22 @@ export default function Navbar() {
           </div>
         </div>
 
-        {session && (role === "admin" || role === "owner") && (
+        {hasAdminAccess && (
           <div className="flex justify-end pb-2 -mt-1">
             <Link
               to="/admin-dashboard"
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+              className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold transition-all duration-200 backdrop-blur-xl ${
                 location.pathname === "/admin-dashboard"
-                  ? "bg-cyan/10 text-cyan border-cyan/40 glow-green"
-                  : "text-cyan border-cyan/30 bg-cyan/5 hover:bg-cyan/10"
+                  ? "border-primary/60 bg-primary/15 text-primary shadow-[0_0_28px_hsl(var(--primary)/0.22)]"
+                  : "border-primary/35 bg-primary/10 text-primary hover:bg-primary/15 hover:border-primary/55"
               }`}
             >
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              <span>Admin</span>
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Admin Dashboard</span>
             </Link>
           </div>
         )}
+
       </div>
     </nav>
   );
