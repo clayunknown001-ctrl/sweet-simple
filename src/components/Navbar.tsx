@@ -54,19 +54,9 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
-      <div className="container mx-auto flex items-center justify-between h-16 px-4">
-        <div className="flex items-center gap-3">
-          {session && (role === "admin" || role === "owner") && (
-            <Link
-              to="/admin-dashboard"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-cyan border border-cyan/30 bg-cyan/5 hover:bg-cyan/10 transition-colors"
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span className="hidden md:inline">Admin Panel</span>
-            </Link>
-          )}
-
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/60 backdrop-blur-xl">
+      <div className="container mx-auto px-4">
+        <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="relative">
               <Brain className="w-8 h-8 text-primary animate-pulse-glow" />
@@ -77,54 +67,70 @@ export default function Navbar() {
               <span className="text-foreground"> Content Insights</span>
             </span>
           </Link>
-        </div>
 
-        <div className="flex items-center gap-1">
-          {items.map(({ path, label, icon: Icon }) => {
-            const active = location.pathname === path;
-            return (
+          <div className="flex items-center gap-1">
+            {items.map(({ path, label, icon: Icon }) => {
+              const active = location.pathname === path;
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    active
+                      ? "bg-primary/10 text-primary glow-green"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="hidden md:inline">{label}</span>
+                </Link>
+              );
+            })}
+
+            <div className="ml-1">
+              <ProUpgradeButton />
+            </div>
+
+            {!session ? (
               <Link
-                key={path}
-                to={path}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  active
-                    ? "bg-primary/10 text-primary glow-green"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
+                to="/auth"
+                className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
               >
-                <Icon className="w-4 h-4" />
-                <span className="hidden md:inline">{label}</span>
+                <LogIn className="w-4 h-4" />
+                <span className="hidden md:inline">Kirish</span>
               </Link>
-            );
-          })}
-
-          <div className="ml-1">
-            <ProUpgradeButton />
+            ) : (
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.href = "/auth";
+                }}
+                className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden md:inline">Chiqish</span>
+              </button>
+            )}
           </div>
-
-          {!session ? (
-            <Link
-              to="/auth"
-              className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
-            >
-              <LogIn className="w-4 h-4" />
-              <span className="hidden md:inline">Kirish</span>
-            </Link>
-          ) : (
-            <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                window.location.href = "/auth";
-              }}
-              className="ml-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden md:inline">Chiqish</span>
-            </button>
-          )}
         </div>
 
+        {session && (role === "admin" || role === "owner") && (
+          <div className="flex justify-end pb-2 -mt-1">
+            <Link
+              to="/admin-dashboard"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                location.pathname === "/admin-dashboard"
+                  ? "bg-cyan/10 text-cyan border-cyan/40 glow-green"
+                  : "text-cyan border-cyan/30 bg-cyan/5 hover:bg-cyan/10"
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Admin</span>
+            </Link>
+          </div>
+        )}
       </div>
     </nav>
   );
 }
+
