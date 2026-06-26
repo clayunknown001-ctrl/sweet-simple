@@ -21,16 +21,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadRole = async (uid: string) => {
-    const { data } = await supabase
+  const loadRole = async (uid: string): Promise<AppRole> => {
+    const { data: rpcRole, error: rpcError } = await supabase.rpc("get_my_role" as any);
+
+    if (!rpcError && (rpcRole === "owner" || rpcRole === "admin" || rpcRole === "user")) {
+      setRole(rpcRole);
+      return rpcRole;
+    }
+
+    const { data, error } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", uid);
-    if (!data || data.length === 0) return setRole("user");
+
+    if (error || !data || data.length === 0) {
+      setRole("user");
+      return "user";
+    }
+
     const roles = data.map((r: any) => r.role as AppRole);
-    if (roles.includes("owner")) setRole("owner");
-    else if (roles.includes("admin")) setRole("admin");
-    else setRole("user");
+    const nextRole = roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : "user";
+    setRole(nextRole);
+    return nextRole;
   };
 
   useEffect(() => {
@@ -38,17 +50,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        setTimeout(() => loadRole(s.user.id), 0);
+        setLoading(true);
+        setTimeout(() => {
+          loadRole(s.user.id).finally(() => setLoading(false));
+        }, 0);
       } else {
         setRole(null);
+        setLoading(false);
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    supabase.auth.getUser().then(({ data: { user: verifiedUser } }) => {
+      if (!verifiedUser) {
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
+
+      supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) loadRole(s.user.id).finally(() => setLoading(false));
-      else setLoading(false);
+        setUser(verifiedUser);
+        loadRole(verifiedUser.id).finally(() => setLoading(false));
+      });
     });
 
     return () => sub.subscription.unsubscribe();
@@ -60,6 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
     setRole(null);
   };
 
