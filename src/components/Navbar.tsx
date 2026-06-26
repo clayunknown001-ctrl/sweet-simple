@@ -15,6 +15,7 @@ export default function Navbar() {
   const location = useLocation();
   const { session, role, user } = useAuth();
   const [hasRadarAccess, setHasRadarAccess] = useState(false);
+  const hasAdminAccess = !!session && (role === "admin" || role === "owner");
 
   // Brauzer Radar: owner OR an admin listed in any flag's allowed_admin_emails
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function Navbar() {
             </span>
           </Link>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto">
             {items.map(({ path, label, icon: Icon }) => {
               const active = location.pathname === path;
               return (
@@ -86,6 +87,20 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {hasAdminAccess && (
+              <Link
+                to="/admin-dashboard"
+                className={`flex shrink-0 items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 border ${
+                  location.pathname === "/admin-dashboard"
+                    ? "bg-primary/10 text-primary border-primary/40 glow-green"
+                    : "text-primary border-primary/30 bg-primary/5 hover:bg-primary/10"
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span className="hidden md:inline">Admin Dashboard</span>
+              </Link>
+            )}
 
             <div className="ml-1">
               <ProUpgradeButton />
@@ -114,21 +129,6 @@ export default function Navbar() {
           </div>
         </div>
 
-        {session && (role === "admin" || role === "owner") && (
-          <div className="flex justify-end pb-2 -mt-1">
-            <Link
-              to="/admin-dashboard"
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                location.pathname === "/admin-dashboard"
-                  ? "bg-cyan/10 text-cyan border-cyan/40 glow-green"
-                  : "text-cyan border-cyan/30 bg-cyan/5 hover:bg-cyan/10"
-              }`}
-            >
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              <span>Admin</span>
-            </Link>
-          </div>
-        )}
       </div>
     </nav>
   );
