@@ -300,6 +300,10 @@ export type Database = {
         }
       }
       get_api_usage_analytics: { Args: never; Returns: Json }
+      get_my_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       get_system_analytics: { Args: never; Returns: Json }
       grant_flag_admin: {
         Args: { _email: string; _flag_name: string }
