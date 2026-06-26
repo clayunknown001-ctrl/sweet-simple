@@ -88,20 +88,6 @@ export default function Navbar() {
               );
             })}
 
-            {hasAdminAccess && (
-              <Link
-                to="/admin-dashboard"
-                className={`flex shrink-0 items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 border ${
-                  location.pathname === "/admin-dashboard"
-                    ? "bg-primary/10 text-primary border-primary/40 glow-green"
-                    : "text-primary border-primary/30 bg-primary/5 hover:bg-primary/10"
-                }`}
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                <span className="hidden md:inline">Admin Dashboard</span>
-              </Link>
-            )}
-
             <div className="ml-1">
               <ProUpgradeButton />
             </div>
@@ -128,6 +114,22 @@ export default function Navbar() {
             )}
           </div>
         </div>
+
+        {hasAdminAccess && (
+          <div className="flex justify-end pb-2 -mt-1">
+            <Link
+              to="/admin-dashboard"
+              className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold transition-all duration-200 backdrop-blur-xl ${
+                location.pathname === "/admin-dashboard"
+                  ? "border-primary/60 bg-primary/15 text-primary shadow-[0_0_28px_hsl(var(--primary)/0.22)]"
+                  : "border-primary/35 bg-primary/10 text-primary hover:bg-primary/15 hover:border-primary/55"
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Admin Dashboard</span>
+            </Link>
+          </div>
+        )}
 
       </div>
     </nav>
