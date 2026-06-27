@@ -117,7 +117,8 @@ export default function Index() {
       <section
         ref={heroRef}
         onMouseMove={onMove}
-        className="relative container mx-auto px-4 pt-24 sm:pt-28 pb-10"
+        className="relative container mx-auto px-4 pt-24 sm:pt-28 pb-10 overflow-hidden"
+        style={{ minHeight: "min(100vh, 900px)" }}
       >
         <Particles />
 
@@ -129,7 +130,7 @@ export default function Index() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="hidden md:flex absolute right-4 top-24 z-10 items-center gap-3 px-4 py-2.5 rounded-xl border border-[rgba(0,255,170,0.18)] bg-[#0B1015]/90 backdrop-blur-xl hover:border-[rgba(0,255,170,0.4)] transition-colors group"
+          className="hidden md:flex absolute right-4 top-24 z-20 items-center gap-3 px-4 py-2.5 rounded-xl border border-[rgba(0,255,170,0.18)] bg-[#0B1015]/90 backdrop-blur-xl hover:border-[rgba(0,255,170,0.4)] transition-colors group"
         >
           <Bell className="w-4 h-4 text-[#00E58E]" />
           <div className="text-[13px] leading-tight">
@@ -140,60 +141,119 @@ export default function Index() {
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#00E58E] shadow-[0_0_10px_#00E58E]" />
         </motion.a>
 
-        <div className="grid lg:grid-cols-2 gap-10 items-center relative">
-          {/* Left */}
-          <motion.div
-            initial={{ opacity: 0, x: -24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
+        {/* Mobile background logo */}
+        <motion.img
+          src={heroImage}
+          alt=""
+          aria-hidden="true"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.2 }}
+          transition={{ duration: 1 }}
+          className="md:hidden pointer-events-none absolute top-20 right-[-10%] w-[55%] z-0 select-none"
+          style={{ filter: "blur(1px)", objectFit: "contain" }}
+        />
+
+        <div
+          className="relative z-10 h-full grid items-center gap-8 md:gap-10"
+          style={{ gridTemplateColumns: "1fr" }}
+        >
+          <div
+            className="hidden md:grid items-center gap-10 w-full"
+            style={{ gridTemplateColumns: "minmax(320px, 45%) minmax(420px, 55%)" }}
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-[58px] font-bold leading-[1.05] tracking-tight">
+            {/* Left */}
+            <motion.div
+              initial={{ opacity: 0, x: -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+            >
+              <h1 className="text-4xl lg:text-[58px] font-bold leading-[1.05] tracking-tight">
+                <span className="text-[#00E58E] drop-shadow-[0_0_24px_rgba(0,229,142,0.45)]">AI</span>{" "}
+                <span className="text-[#F4F6F8]">bilan ishlaydigan</span>
+                <br />
+                <span className="text-[#F4F6F8]">kontent tahlil platformasi</span>
+              </h1>
+              <p className="mt-5 text-[15px] lg:text-base text-[#97A2AE] max-w-xl leading-relaxed">
+                Matn, rasm va video kontentlarni chuqur tahlil qiling, xavfni aniqlang,
+                sifatni oshiring va samaradorlikni kuchaytiring.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  to="/api"
+                  className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-[#00E58E] to-[#1CF7D2] text-[#04140B] font-semibold shadow-[0_0_30px_rgba(0,229,142,0.35)] hover:shadow-[0_0_40px_rgba(0,229,142,0.55)] transition-shadow"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  API kalit olish
+                </Link>
+                <Link
+                  to="/image-analysis"
+                  className="flex items-center gap-2 px-6 py-3.5 rounded-xl border border-[rgba(0,255,170,0.18)] bg-[#0B1015] text-[#F4F6F8] hover:border-[rgba(0,255,170,0.4)] transition-colors"
+                >
+                  <ImageIcon className="w-4 h-4 text-[#00E58E]" />
+                  Rasm sinash
+                </Link>
+              </div>
+            </motion.div>
+
+            {/* Right hero image */}
+            <motion.div
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+              className="relative justify-self-end w-full h-full flex items-center justify-end"
+            >
+              <motion.div
+                style={{ x: tx, y: ty }}
+                className="relative w-full"
+              >
+                <div className="absolute inset-8 blur-3xl bg-[#00E58E]/25 rounded-full" />
+                <motion.img
+                  src={heroImage}
+                  alt="Narimon AI holographic platform"
+                  width={1280}
+                  height={1024}
+                  className="relative w-full max-h-[80vh] lg:translate-x-[6%] select-none"
+                  style={{ objectFit: "contain" }}
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                />
+              </motion.div>
+            </motion.div>
+          </div>
+
+          {/* Mobile-only text column (logo is absolute bg) */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="md:hidden relative z-10"
+          >
+            <h1 className="text-4xl sm:text-5xl font-bold leading-[1.05] tracking-tight">
               <span className="text-[#00E58E] drop-shadow-[0_0_24px_rgba(0,229,142,0.45)]">AI</span>{" "}
               <span className="text-[#F4F6F8]">bilan ishlaydigan</span>
               <br />
               <span className="text-[#F4F6F8]">kontent tahlil platformasi</span>
             </h1>
-            <p className="mt-5 text-[15px] sm:text-base text-[#97A2AE] max-w-xl leading-relaxed">
+            <p className="mt-5 text-[15px] text-[#97A2AE] max-w-xl leading-relaxed">
               Matn, rasm va video kontentlarni chuqur tahlil qiling, xavfni aniqlang,
               sifatni oshiring va samaradorlikni kuchaytiring.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 to="/api"
-                className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-[#00E58E] to-[#1CF7D2] text-[#04140B] font-semibold shadow-[0_0_30px_rgba(0,229,142,0.35)] hover:shadow-[0_0_40px_rgba(0,229,142,0.55)] transition-shadow"
+                className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-[#00E58E] to-[#1CF7D2] text-[#04140B] font-semibold shadow-[0_0_30px_rgba(0,229,142,0.35)] transition-shadow"
               >
                 <KeyRound className="w-4 h-4" />
                 API kalit olish
               </Link>
               <Link
                 to="/image-analysis"
-                className="flex items-center gap-2 px-6 py-3.5 rounded-xl border border-[rgba(0,255,170,0.18)] bg-[#0B1015] text-[#F4F6F8] hover:border-[rgba(0,255,170,0.4)] transition-colors"
+                className="flex items-center gap-2 px-6 py-3.5 rounded-xl border border-[rgba(0,255,170,0.18)] bg-[#0B1015] text-[#F4F6F8] transition-colors"
               >
                 <ImageIcon className="w-4 h-4 text-[#00E58E]" />
                 Rasm sinash
               </Link>
             </div>
-          </motion.div>
-
-          {/* Right hero image */}
-          <motion.div
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative"
-          >
-            <motion.div style={{ x: tx, y: ty }} className="relative">
-              <div className="absolute inset-0 blur-3xl bg-[#00E58E]/20 rounded-full" />
-              <motion.img
-                src={heroImage}
-                alt="Narimon AI holographic platform"
-                width={1280}
-                height={1024}
-                className="relative w-full max-w-[560px] mx-auto select-none"
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              />
-            </motion.div>
           </motion.div>
         </div>
       </section>
