@@ -10,6 +10,7 @@ import SafeNetGuard from "./components/SafeNetGuard";
 import { AuthProvider } from "./hooks/useAuth";
 import { RequireRole } from "./components/RequireRole";
 import { ProUpgradeProvider } from "./components/admin/ProUpgradeModal";
+import NavArrows from "./components/NavArrows";
 
 const About = lazy(() => import("./pages/About"));
 const NarimonAI = lazy(() => import("./pages/NarimonAI"));
