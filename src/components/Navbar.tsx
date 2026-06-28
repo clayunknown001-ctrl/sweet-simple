@@ -1,138 +1,134 @@
-import { Link, useLocation } from "react-router-dom";
-import { FileText, Image, Video, Zap, Shield, KeyRound, LogIn, LogOut, LayoutDashboard, Star } from "lucide-react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useUpgradeModal } from "@/components/admin/ProUpgradeModal";
+import { LogIn, LogOut, LayoutDashboard, Menu, X } from "lucide-react";
+import { useState } from "react";
+import logo from "@/assets/narimon-hero.jpg";
+import NotificationBell from "@/components/NotificationBell";
 
-interface NavItem {
-  path: string;
-  label: string;
-  icon: any;
-}
+const items = [
+  { to: "/ai", label: "Narimon AI" },
+  { to: "/browser", label: "Narimon Brauzer" },
+  { to: "/about", label: "Biz haqimizda" },
+];
 
 export default function Navbar() {
-  const location = useLocation();
-  const { session, role, user } = useAuth();
-  const { open: openUpgrade } = useUpgradeModal();
-  const [hasRadarAccess, setHasRadarAccess] = useState(false);
-  const hasAdminAccess = !!session && (role === "admin" || role === "owner");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (role === "owner") {
-        if (!cancelled) setHasRadarAccess(true);
-        return;
-      }
-      if (role === "admin" && user?.email) {
-        const { data } = await supabase
-          .from("system_flags")
-          .select("allowed_admin_emails");
-        const ok = !!data?.some((r: any) =>
-          (r.allowed_admin_emails ?? []).includes(user.email!)
-        );
-        if (!cancelled) setHasRadarAccess(ok);
-      } else {
-        if (!cancelled) setHasRadarAccess(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [role, user?.email]);
-
-  const items: NavItem[] = [
-    { path: "/", label: "Bosh sahifa", icon: Zap },
-    { path: "/text-analysis", label: "Matn", icon: FileText },
-    { path: "/image-analysis", label: "Rasm", icon: Image },
-    { path: "/video-analysis", label: "Video", icon: Video },
-    { path: "/api", label: "API", icon: KeyRound },
-  ];
-  if (hasRadarAccess) {
-    items.splice(1, 0, { path: "/extension", label: "Brauzer Radar", icon: Shield });
-  }
+  const { user, role, signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  const loc = useLocation();
+  const isAdmin = role === "admin" || role === "owner";
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[rgba(0,255,170,0.12)] bg-[#050607]/80 backdrop-blur-xl">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16 gap-4">
+    <div className="fixed top-4 left-0 right-0 z-50 px-4 pointer-events-none">
+      <motion.nav
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="pointer-events-auto mx-auto max-w-6xl rounded-2xl border border-[rgba(0,255,170,0.15)] bg-[#0B1015]/70 backdrop-blur-xl shadow-[0_0_40px_rgba(0,229,142,0.08)]"
+      >
+        <div className="flex items-center justify-between px-4 sm:px-5 py-2.5">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 shrink-0">
-            <div className="relative w-9 h-9 rounded-xl border border-[rgba(0,255,170,0.25)] bg-[#0B1015] flex items-center justify-center">
-              <span className="text-[#00E58E] font-bold text-lg drop-shadow-[0_0_8px_rgba(0,229,142,0.7)]">N</span>
+          <Link to="/" className="flex items-center gap-2.5 group">
+            <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-[rgba(0,255,170,0.25)] bg-[#0B1015]">
+              <img src={logo} alt="" className="w-full h-full object-cover scale-150" />
             </div>
-            <span className="text-[15px] font-semibold tracking-tight text-[#F4F6F8] hidden sm:inline">
-              AI Content Insights
-            </span>
+            <div className="leading-tight">
+              <div className="text-[15px] font-bold text-[#F4F6F8]">Narimon</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[#00E58E]">Ecosystem</div>
+            </div>
           </Link>
 
-          {/* Center nav */}
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
-            {items.map(({ path, label, icon: Icon }) => {
-              const active = location.pathname === path;
-              return (
-                <Link
-                  key={path}
-                  to={path}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    active
-                      ? "text-[#00E58E]"
-                      : "text-[#97A2AE] hover:text-[#F4F6F8]"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span className="hidden md:inline">{label}</span>
-                </Link>
-              );
-            })}
+          {/* Desktop nav */}
+          <div className="hidden md:flex items-center gap-1">
+            {items.map((it) => (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                className={({ isActive }) =>
+                  `px-3.5 py-2 rounded-xl text-sm transition-all ${
+                    isActive
+                      ? "bg-[#00E58E]/10 text-[#00E58E] border border-[rgba(0,229,142,0.3)]"
+                      : "text-[#97A2AE] hover:text-[#F4F6F8] border border-transparent"
+                  }`
+                }
+              >
+                {it.label}
+              </NavLink>
+            ))}
           </div>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => openUpgrade()}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-[#F4F6F8] border border-[rgba(0,255,170,0.18)] bg-[#0B1015] hover:border-[rgba(0,255,170,0.4)] transition-colors"
-            >
-              <Star className="w-4 h-4 text-[#00E58E]" />
-              <span className="hidden md:inline">Upgrade</span>
-            </button>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
 
-            {!session ? (
+            {!user ? (
               <Link
-                to="/auth"
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-[#F4F6F8] border border-[rgba(0,255,170,0.18)] bg-[#0B1015] hover:border-[rgba(0,255,170,0.4)] transition-colors"
+                to="/login"
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm text-[#F4F6F8] border border-[rgba(0,255,170,0.18)] hover:border-[rgba(0,255,170,0.4)] transition-colors"
               >
-                <LogIn className="w-4 h-4 text-[#00E58E]" />
-                <span className="hidden md:inline">Kirish</span>
+                <LogIn className="w-4 h-4" />
+                Login
               </Link>
             ) : (
               <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  window.location.href = "/auth";
-                }}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-[#F4F6F8] border border-[rgba(0,255,170,0.18)] bg-[#0B1015] hover:border-[rgba(0,255,170,0.4)] transition-colors"
+                onClick={signOut}
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm text-[#97A2AE] hover:text-[#F4F6F8] border border-transparent hover:border-[rgba(0,255,170,0.2)] transition-colors"
               >
-                <LogOut className="w-4 h-4 text-[#00E58E]" />
-                <span className="hidden md:inline">Chiqish</span>
+                <LogOut className="w-4 h-4" />
+                Logout
               </button>
             )}
 
-            {hasAdminAccess && (
+            {isAdmin && (
               <Link
-                to="/admin-dashboard"
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                  location.pathname === "/admin-dashboard"
-                    ? "border-[#00E58E] text-[#00E58E] bg-[#00E58E]/5"
-                    : "border-[rgba(0,255,170,0.35)] text-[#00E58E] hover:bg-[#00E58E]/5"
-                }`}
+                to="/dashboard"
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium text-[#04140B] bg-gradient-to-r from-[#00E58E] to-[#1CF7D2] shadow-[0_0_20px_rgba(0,229,142,0.3)]"
               >
                 <LayoutDashboard className="w-4 h-4" />
-                <span className="hidden lg:inline">Admin Dashboard</span>
+                Dashboard
+              </Link>
+            )}
+
+            <button
+              className="md:hidden p-2 rounded-lg text-[#F4F6F8]"
+              onClick={() => setOpen((v) => !v)}
+              aria-label="menu"
+            >
+              {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+
+        {open && (
+          <div className="md:hidden border-t border-[rgba(0,255,170,0.1)] px-3 py-3 flex flex-col gap-1">
+            {items.map((it) => (
+              <Link
+                key={it.to}
+                to={it.to}
+                onClick={() => setOpen(false)}
+                className={`px-3 py-2 rounded-lg text-sm ${
+                  loc.pathname === it.to ? "bg-[#00E58E]/10 text-[#00E58E]" : "text-[#F4F6F8]"
+                }`}
+              >
+                {it.label}
+              </Link>
+            ))}
+            {!user ? (
+              <Link to="/login" onClick={() => setOpen(false)} className="px-3 py-2 rounded-lg text-sm text-[#F4F6F8]">
+                Login
+              </Link>
+            ) : (
+              <button onClick={() => { signOut(); setOpen(false); }} className="text-left px-3 py-2 rounded-lg text-sm text-[#F4F6F8]">
+                Logout
+              </button>
+            )}
+            {isAdmin && (
+              <Link to="/dashboard" onClick={() => setOpen(false)} className="px-3 py-2 rounded-lg text-sm text-[#00E58E]">
+                Dashboard
               </Link>
             )}
           </div>
-        </div>
-      </div>
-    </nav>
+        )}
+      </motion.nav>
+    </div>
   );
 }
