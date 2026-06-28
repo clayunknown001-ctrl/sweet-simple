@@ -15,7 +15,8 @@ import {
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _sb } from "@/integrations/supabase/client";
+const supabase: any = _sb;
 import { toast } from "sonner";
 
 const BASE_URL = "https://gpfweizmjzaupfxxmqvg.supabase.co";
