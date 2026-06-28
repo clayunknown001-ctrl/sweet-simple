@@ -88,6 +88,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
+            <NavArrows />
             <SafeNetGuard />
           </ProUpgradeProvider>
         </AuthProvider>
