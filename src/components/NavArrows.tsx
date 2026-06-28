@@ -5,14 +5,7 @@ export default function NavArrows() {
   const navigate = useNavigate();
   const loc = useLocation();
 
-  const activePaths = ["/ai", "/browser", "/about", "/biz-haqimizda"];
-  const isActive = activePaths.some((p) =>
-    p === "/ai" ? loc.pathname.startsWith("/ai") :
-    p === "/browser" ? loc.pathname.startsWith("/browser") :
-    loc.pathname === p
-  );
-
-  if (!isActive) return null;
+  if (loc.pathname === "/") return null;
 
   const btn =
     "pointer-events-auto w-9 h-9 flex items-center justify-center rounded-full border border-[rgba(0,255,170,0.18)] bg-[#0B1015]/70 backdrop-blur-xl text-[#F4F6F8] hover:text-[#00E58E] hover:border-[rgba(0,229,142,0.45)] hover:shadow-[0_0_20px_rgba(0,229,142,0.25)] transition-all";
