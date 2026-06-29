@@ -5,7 +5,7 @@ import { useRef } from "react";
 import Navbar from "@/components/Navbar";
 import Particles from "@/components/Particles";
 import Footer from "@/components/Footer";
-import heroImage from "@/assets/narimon-hero.jpg";
+import heroImage from "@/assets/narimon-hero.png";
 
 export default function Index() {
   const mx = useMotionValue(0);
@@ -32,10 +32,25 @@ export default function Index() {
       <section
         ref={heroRef}
         onMouseMove={onMove}
-        className="relative container mx-auto px-4 pt-28 sm:pt-32 pb-16 overflow-hidden"
-        style={{ minHeight: "min(100vh, 920px)" }}
+        className="relative container mx-auto px-4 pt-24 sm:pt-32 pb-12 sm:pb-16 overflow-hidden"
       >
         <Particles />
+
+        {/* Mobile-only background hologram */}
+        <motion.div
+          aria-hidden
+          className="md:hidden pointer-events-none absolute inset-0 z-0 flex items-center justify-center"
+          animate={{ y: [0, -10, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div className="absolute inset-10 blur-3xl bg-[#00E58E]/20 rounded-full" />
+          <img
+            src={heroImage}
+            alt=""
+            className="relative w-[85vw] max-w-[420px] opacity-30 select-none"
+            style={{ objectFit: "contain" }}
+          />
+        </motion.div>
 
         <div className="relative z-10 grid items-center gap-10 md:gap-8 md:grid-cols-[minmax(320px,48%)_minmax(420px,52%)]">
           {/* Left */}
@@ -104,12 +119,12 @@ export default function Index() {
             </Link>
           </motion.div>
 
-          {/* Right hero image */}
+          {/* Right hero image — desktop only */}
           <motion.div
             initial={{ opacity: 0, x: 24 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative w-full h-full flex items-center justify-center"
+            className="hidden md:flex relative w-full h-full items-center justify-center"
             style={{ perspective: 1200 }}
           >
             <motion.div style={{ x: tx, y: ty, rotateX: rotX, rotateY: rotY }} className="relative w-full">
