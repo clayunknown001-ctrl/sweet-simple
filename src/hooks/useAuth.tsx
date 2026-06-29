@@ -22,13 +22,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadRole = async (uid: string): Promise<AppRole> => {
-    const { data: rpcRole, error: rpcError } = await supabase.rpc("get_my_role" as any);
-
-    if (!rpcError && (rpcRole === "owner" || rpcRole === "admin" || rpcRole === "user")) {
-      setRole(rpcRole);
-      return rpcRole;
-    }
-
     const { data, error } = await supabase
       .from("user_roles")
       .select("role")
