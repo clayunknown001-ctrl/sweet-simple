@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Mail, Lock, LogIn } from "lucide-react";
@@ -7,27 +7,66 @@ import Particles from "@/components/Particles";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+
+const nextPathForRole = (role?: string | null) => (role === "admin" || role === "owner" ? "/dashboard" : "/");
 
 export default function Login() {
   const nav = useNavigate();
+  const { session, role, loading, refreshRole } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!loading && session) {
+      nav(nextPathForRole(role), { replace: true });
+    }
+  }, [loading, nav, role, session]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) return toast.error(error.message);
+    if (error) {
+      const message = error.message.toLowerCase();
+      if (message.includes("invalid login") || message.includes("invalid credentials")) {
+        return toast.error("Parol noto‘g‘ri yoki hali yaratilmagan. Google hisobingiz uchun 'Parolni unutdingizmi?' orqali parol yarating.");
+      }
+      return toast.error(error.message);
+    }
+    const nextRole = await refreshRole();
     toast.success("Tizimga kirildi");
-    nav("/");
+    const { data } = await supabase.auth.getUser();
+    if (data.user) nav(nextPathForRole(nextRole ?? role), { replace: true });
   };
 
   const google = async () => {
-    const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (result.error) toast.error("Google login xatosi");
+    setBusy(true);
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
+        extraParams: { prompt: "select_account" },
+      });
+      if (result.error) {
+        toast.error(result.error.message || "Google login xatosi");
+        return;
+      }
+      if (result.redirected) return;
+
+      const nextRole = await refreshRole();
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        toast.success("Google orqali kirildi");
+        nav(nextPathForRole(nextRole ?? role), { replace: true });
+      }
+    } catch (err: any) {
+      toast.error(err?.message ?? "Google login xatosi");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const forgot = async () => {
@@ -36,7 +75,7 @@ export default function Login() {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) toast.error(error.message);
-    else toast.success("Parolni tiklash xati yuborildi");
+    else toast.success("Parol yaratish/tiklash xati yuborildi");
   };
 
   return (
@@ -88,7 +127,7 @@ export default function Login() {
                 Meni eslab qol
               </label>
               <button type="button" onClick={forgot} className="text-[#00E58E] hover:underline">
-                Parolni unutdingizmi?
+                Parol yaratish/tiklash
               </button>
             </div>
             <button
@@ -109,16 +148,14 @@ export default function Login() {
 
           <button
             onClick={google}
+            disabled={busy}
             className="w-full py-3 rounded-xl border border-[rgba(0,255,170,0.2)] bg-[#050607] text-sm hover:border-[rgba(0,255,170,0.45)]"
           >
-            Google bilan kirish
+            {busy ? "Kutilmoqda..." : "Google bilan kirish"}
           </button>
 
           <div className="text-center text-xs text-[#97A2AE] mt-5">
-            Hisobingiz yo'qmi?{" "}
-            <Link to="/login" className="text-[#00E58E] hover:underline">
-              Ro'yxatdan o'tish
-            </Link>
+            Google bilan kirgan email uchun parol kerak bo‘lsa, emailingizni yozib “Parol yaratish/tiklash”ni bosing.
           </div>
         </motion.div>
       </div>

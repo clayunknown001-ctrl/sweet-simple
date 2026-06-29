@@ -17,6 +17,7 @@ const NarimonAI = lazy(() => import("./pages/NarimonAI"));
 const NarimonBrowser = lazy(() => import("./pages/NarimonBrowser"));
 const Login = lazy(() => import("./pages/Login"));
 const Pricing = lazy(() => import("./pages/Pricing"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Download = lazy(() => import("./pages/Download"));
 const Placeholder = lazy(() => import("./pages/Placeholder"));
 const TextAnalysis = lazy(() => import("./pages/TextAnalysis"));
@@ -58,6 +59,7 @@ const App = () => (
 
                 <Route path="/login" element={<Login />} />
                 <Route path="/auth" element={<Login />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/pricing" element={<Pricing />} />
 
                 <Route path="/api" element={<Api />} />
