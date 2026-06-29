@@ -4,7 +4,7 @@ import { Image as ImageIcon, Video, FileText, KeyRound, MessageSquare, Crown, Ch
 import Navbar from "@/components/Navbar";
 import Particles from "@/components/Particles";
 import Footer from "@/components/Footer";
-import brainImg from "@/assets/narimon-brain.jpg";
+import brainImg from "@/assets/narimon-brain.png";
 
 function SideCard({
   to, icon: Icon, title, subtitle,
@@ -30,23 +30,39 @@ export default function NarimonAI() {
   return (
     <div className="min-h-screen bg-[#050607] text-[#F4F6F8]">
       <Navbar />
-      <section className="relative pt-32 pb-16 container mx-auto px-4 overflow-hidden">
+      <section className="relative pt-28 sm:pt-32 pb-16 container mx-auto px-4 overflow-hidden">
         <Particles />
 
         <motion.h1
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center text-5xl md:text-6xl font-bold tracking-tight"
+          className="relative z-10 text-center text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight"
         >
           <span className="text-[#00E58E] drop-shadow-[0_0_28px_rgba(0,229,142,0.55)]">Narimon</span>{" "}
           <span className="text-[#F4F6F8]">AI</span>
         </motion.h1>
-        <p className="text-center text-[#97A2AE] mt-3 max-w-xl mx-auto">
+        <p className="relative z-10 text-center text-[#97A2AE] mt-3 max-w-xl mx-auto px-2">
           Matn, rasm va videolarni chuqur tahlil qiluvchi sun'iy intellekt platformasi.
         </p>
 
-        <div className="relative mt-10 grid lg:grid-cols-[1fr_minmax(360px,42%)_1fr] gap-6 items-center">
+        {/* Mobile-only background brain */}
+        <motion.div
+          aria-hidden
+          className="lg:hidden pointer-events-none absolute inset-0 z-0 flex items-center justify-center"
+          animate={{ y: [0, -12, 0] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div className="absolute inset-10 blur-3xl bg-[#00E58E]/25 rounded-full" />
+          <img
+            src={brainImg}
+            alt=""
+            className="relative w-[70vw] max-w-[360px] opacity-25 select-none"
+            style={{ objectFit: "contain" }}
+          />
+        </motion.div>
+
+        <div className="relative z-10 mt-10 grid lg:grid-cols-[1fr_minmax(360px,42%)_1fr] gap-6 items-center">
           {/* Left buttons */}
           <div className="flex flex-col gap-3 order-2 lg:order-1">
             <SideCard to="/ai/image" icon={ImageIcon} title="Rasm tahlili" subtitle="NSFW va xavfli kontent" />
@@ -54,12 +70,12 @@ export default function NarimonAI() {
             <SideCard to="/ai/text" icon={FileText} title="Matn tahlili" subtitle="Toksiklik va sentiment" />
           </div>
 
-          {/* Brain */}
+          {/* Brain — desktop only */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8 }}
-            className="relative order-1 lg:order-2 flex items-center justify-center"
+            className="relative hidden lg:flex order-1 lg:order-2 items-center justify-center"
           >
             <div className="absolute inset-10 blur-3xl bg-[#00E58E]/30 rounded-full" />
             <motion.img
