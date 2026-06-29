@@ -37,10 +37,10 @@ export default function Login() {
       }
       return toast.error(error.message);
     }
-    await refreshRole();
+    const nextRole = await refreshRole();
     toast.success("Tizimga kirildi");
     const { data } = await supabase.auth.getUser();
-    if (data.user) nav(nextPathForRole(role), { replace: true });
+    if (data.user) nav(nextPathForRole(nextRole ?? role), { replace: true });
   };
 
   const google = async () => {
@@ -56,11 +56,11 @@ export default function Login() {
       }
       if (result.redirected) return;
 
-      await refreshRole();
+      const nextRole = await refreshRole();
       const { data } = await supabase.auth.getUser();
       if (data.user) {
         toast.success("Google orqali kirildi");
-        nav(nextPathForRole(role), { replace: true });
+        nav(nextPathForRole(nextRole ?? role), { replace: true });
       }
     } catch (err: any) {
       toast.error(err?.message ?? "Google login xatosi");

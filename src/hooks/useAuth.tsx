@@ -9,7 +9,7 @@ interface AuthCtx {
   user: User | null;
   role: AppRole | null;
   loading: boolean;
-  refreshRole: () => Promise<void>;
+  refreshRole: () => Promise<AppRole | null>;
   signOut: () => Promise<void>;
 }
 
@@ -73,7 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshRole = async () => {
-    if (user) await loadRole(user.id);
+    if (!user) return null;
+    return loadRole(user.id);
   };
 
   const signOut = async () => {
